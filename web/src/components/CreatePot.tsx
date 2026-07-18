@@ -17,6 +17,8 @@ export function CreatePot({ onDone }: { onDone: (id?: bigint) => void }) {
   const [penalty, setPenalty] = useState("5");
   const [minDeposit, setMinDeposit] = useState("0.1");
   const [votingHours, setVotingHours] = useState("72");
+  const [visibility, setVisibility] = useState<"open" | "invite">("open");
+  const [inviteesRaw, setInviteesRaw] = useState("");
   const [err, setErr] = useState("");
   const [waiting, setWaiting] = useState(false);
 
@@ -44,6 +46,17 @@ export function CreatePot({ onDone }: { onDone: (id?: bigint) => void }) {
 
       const deadline = Math.floor(Date.now() / 1000) + Math.round(durationDays * DAY);
 
+      const invitees = inviteesRaw
+        .split(/[\s,;]+/)
+        .map((a) => a.trim())
+        .filter(Boolean);
+      if (visibility === "invite") {
+        if (invitees.length > 100) throw new Error("At most 100 invitees at creation.");
+        for (const a of invitees) {
+          if (!isAddress(a)) throw new Error(`Not a valid address: ${a.slice(0, 20)}…`);
+        }
+      }
+
       const hash = await writeContractAsync({
         ...goalPot,
         functionName: "createPot",
@@ -55,6 +68,8 @@ export function CreatePot({ onDone }: { onDone: (id?: bigint) => void }) {
           penaltyBps,
           minWei,
           votingSecs,
+          visibility === "open",
+          visibility === "invite" ? (invitees as `0x${string}`[]) : [],
         ],
       });
       setWaiting(true);
@@ -121,7 +136,28 @@ export function CreatePot({ onDone }: { onDone: (id?: bigint) => void }) {
             <span>Exit-vote window (hours)</span>
             <input value={votingHours} onChange={(e) => setVotingHours(e.target.value)} inputMode="numeric" />
           </label>
+          <label className="field">
+            <span>Who can join?</span>
+            <select
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value as "open" | "invite")}
+            >
+              <option value="open">Open — anyone with the link</option>
+              <option value="invite">Invite-only — addresses I approve</option>
+            </select>
+          </label>
         </div>
+        {visibility === "invite" && (
+          <label className="field">
+            <span>Invite addresses (one per line — you can add more later)</span>
+            <textarea
+              value={inviteesRaw}
+              onChange={(e) => setInviteesRaw(e.target.value)}
+              placeholder={"0xabc…\n0xdef…"}
+              rows={3}
+            />
+          </label>
+        )}
         <div className="row mt">
           <button className="primary" type="submit" disabled={!isConnected || isPending || waiting}>
             {waiting ? "Confirming…" : isPending ? "Sign in wallet…" : "Open pot"}

@@ -89,6 +89,12 @@ The local node mirrors Monad testnet's chain id, so the app needs no code change
   (deadline passed, goal unmet). Both transitions are permissionless: anyone can
   call `release`/`startRefunds` once the conditions hold, so funds can never be
   stranded by an absent creator.
+- **Joining**: pots are **open** (anyone with the link can deposit) or
+  **invite-only** (creator manages an on-chain allowlist, seeded at creation and
+  extendable while the pot is active). The pot page has an invite panel with a
+  shareable link, native share sheet, and QR code. Invite-only matters because
+  votes are deposit-weighted — it stops strangers from buying voting power in a
+  friend group's pot.
 - **Membership** = having deposited at least the pot's `minDeposit` (sybil floor).
   Top-ups of any size after that.
 - **Early exit**: `requestExit` opens a vote (one live request per pot, bounded

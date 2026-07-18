@@ -51,6 +51,16 @@ export const goalPotAbi = [
   },
   {
     "inputs": [],
+    "name": "NotCreator",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotInvited",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NotMember",
     "type": "error"
   },
@@ -72,6 +82,11 @@ export const goalPotAbi = [
   {
     "inputs": [],
     "name": "SelfVote",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TooManyInvites",
     "type": "error"
   },
   {
@@ -265,6 +280,25 @@ export const goalPotAbi = [
         "type": "uint256"
       },
       {
+        "indexed": false,
+        "internalType": "address[]",
+        "name": "invitees",
+        "type": "address[]"
+      }
+    ],
+    "name": "MembersInvited",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "potId",
+        "type": "uint256"
+      },
+      {
         "indexed": true,
         "internalType": "address",
         "name": "creator",
@@ -311,6 +345,12 @@ export const goalPotAbi = [
         "internalType": "uint256",
         "name": "votingPeriod",
         "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "openJoin",
+        "type": "bool"
       }
     ],
     "name": "PotCreated",
@@ -492,6 +532,16 @@ export const goalPotAbi = [
         "internalType": "uint40",
         "name": "votingPeriod",
         "type": "uint40"
+      },
+      {
+        "internalType": "bool",
+        "name": "openJoin",
+        "type": "bool"
+      },
+      {
+        "internalType": "address[]",
+        "name": "invitees",
+        "type": "address[]"
       }
     ],
     "name": "createPot",
@@ -710,6 +760,11 @@ export const goalPotAbi = [
             "type": "uint96"
           },
           {
+            "internalType": "bool",
+            "name": "openJoin",
+            "type": "bool"
+          },
+          {
             "internalType": "enum GoalPot.PotState",
             "name": "state",
             "type": "uint8"
@@ -767,6 +822,48 @@ export const goalPotAbi = [
       }
     ],
     "name": "hasVoted",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "potId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address[]",
+        "name": "invitees",
+        "type": "address[]"
+      }
+    ],
+    "name": "inviteMembers",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "name": "invitedOf",
     "outputs": [
       {
         "internalType": "bool",

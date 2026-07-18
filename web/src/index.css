@@ -285,7 +285,7 @@ label.field span {
   color: var(--ink-soft);
   margin-bottom: 4px;
 }
-input, select {
+input, select, textarea {
   font-family: var(--mono);
   font-size: 0.9rem;
   width: 100%;
@@ -294,8 +294,9 @@ input, select {
   border-radius: 6px;
   background: var(--paper);
   color: var(--ink);
+  resize: vertical;
 }
-input:focus, select:focus {
+input:focus, select:focus, textarea:focus {
   outline: 2px solid var(--brass);
   outline-offset: 1px;
 }

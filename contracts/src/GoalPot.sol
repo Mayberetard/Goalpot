@@ -36,6 +36,9 @@ contract GoalPot {
     error VoteNotPassed();
     error TransferFailed();
     error Reentrancy();
+    error NotInvited();
+    error NotCreator();
+    error TooManyInvites();
 
     // ---------------------------------------------------------------- types
     enum PotState {
@@ -53,6 +56,7 @@ contract GoalPot {
         uint40 votingPeriod;    // seconds an exit vote stays open
         uint16 penaltyBps;      // early-exit penalty, e.g. 500 = 5%
         uint96 minDeposit;      // sybil floor for membership/vote weight
+        bool openJoin;          // false = invite-only (creator-managed allowlist)
         PotState state;
         uint96 totalDeposited;  // sum of active members' deposits
         uint96 penaltyPool;     // penalties retained for remaining members
@@ -77,6 +81,7 @@ contract GoalPot {
     mapping(uint256 => mapping(address => uint96)) public depositOf;
     mapping(uint256 => address[]) internal memberList; // append-only, for UI reads
     mapping(uint256 => mapping(address => bool)) internal everMember;
+    mapping(uint256 => mapping(address => bool)) public invitedOf; // invite-only pots
 
     mapping(uint256 => ExitRequest) public exitRequestOf; // one live request per pot
     mapping(uint256 => uint256) public exitRound;         // bumps per request
@@ -99,7 +104,8 @@ contract GoalPot {
         uint256 deadline,
         uint256 penaltyBps,
         uint256 minDeposit,
-        uint256 votingPeriod
+        uint256 votingPeriod,
+        bool openJoin
     );
     event Deposited(uint256 indexed potId, address indexed member, uint256 amount, uint256 newTotal);
     event Released(uint256 indexed potId, address indexed beneficiary, uint256 amount);
@@ -109,6 +115,7 @@ contract GoalPot {
     event ExitVoted(uint256 indexed potId, uint256 indexed round, address indexed voter, bool support, uint256 weight);
     event ExitExecuted(uint256 indexed potId, uint256 indexed round, address indexed requester, uint256 payout, uint256 penalty);
     event ExitClosed(uint256 indexed potId, uint256 indexed round, bool passed);
+    event MembersInvited(uint256 indexed potId, address[] invitees);
 
     // ---------------------------------------------------------------- modifiers
     modifier nonReentrant() {
@@ -124,6 +131,9 @@ contract GoalPot {
     }
 
     // ---------------------------------------------------------------- create
+    /// @param openJoin true = anyone may deposit; false = invite-only, seeded
+    ///        with `invitees` (creator is always allowed) and extendable later
+    ///        via {inviteMembers}.
     function createPot(
         string calldata name,
         address beneficiary,
@@ -131,7 +141,9 @@ contract GoalPot {
         uint40 deadline,
         uint16 penaltyBps,
         uint96 minDeposit,
-        uint40 votingPeriod
+        uint40 votingPeriod,
+        bool openJoin,
+        address[] calldata invitees
     ) external returns (uint256 potId) {
         if (
             bytes(name).length == 0 ||
@@ -154,9 +166,44 @@ contract GoalPot {
         p.penaltyBps = penaltyBps;
         p.minDeposit = minDeposit;
         p.votingPeriod = votingPeriod;
+        p.openJoin = openJoin;
         p.state = PotState.Active;
 
-        emit PotCreated(potId, msg.sender, beneficiary, name, goal, deadline, penaltyBps, minDeposit, votingPeriod);
+        if (!openJoin) {
+            invitedOf[potId][msg.sender] = true;
+            _invite(potId, invitees);
+        }
+
+        emit PotCreated(
+            potId,
+            msg.sender,
+            p.beneficiary,
+            p.name,
+            p.goal,
+            p.deadline,
+            p.penaltyBps,
+            p.minDeposit,
+            p.votingPeriod,
+            p.openJoin
+        );
+    }
+
+    /// @notice Creator extends an invite-only pot's allowlist while it is Active.
+    function inviteMembers(uint256 potId, address[] calldata invitees) external exists(potId) {
+        Pot storage p = pots[potId];
+        if (msg.sender != p.creator) revert NotCreator();
+        if (p.state != PotState.Active) revert NotActive();
+        if (p.openJoin) revert BadParams();
+        _invite(potId, invitees);
+    }
+
+    function _invite(uint256 potId, address[] calldata invitees) internal {
+        if (invitees.length > 100) revert TooManyInvites(); // bound the loop
+        for (uint256 i = 0; i < invitees.length; i++) {
+            if (invitees[i] == address(0)) revert BadParams();
+            invitedOf[potId][invitees[i]] = true;
+        }
+        if (invitees.length > 0) emit MembersInvited(potId, invitees);
     }
 
     // ---------------------------------------------------------------- deposit
@@ -169,6 +216,7 @@ contract GoalPot {
 
         uint96 prev = depositOf[potId][msg.sender];
         if (prev == 0) {
+            if (!p.openJoin && !invitedOf[potId][msg.sender]) revert NotInvited();
             if (msg.value < p.minDeposit) revert BelowMinDeposit();
             p.memberCount += 1;
             if (!everMember[potId][msg.sender]) {

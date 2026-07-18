@@ -12,6 +12,7 @@ export type Pot = {
   votingPeriod: bigint | number;
   penaltyBps: number;
   minDeposit: bigint;
+  openJoin: boolean;
   state: number; // 0 Active, 1 Released, 2 Refunding
   totalDeposited: bigint;
   penaltyPool: bigint;

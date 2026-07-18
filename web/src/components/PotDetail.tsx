@@ -5,6 +5,7 @@ import { goalPot, usePot, POLL_MS, STATE_LABEL, type Pot } from "../lib/hooks";
 import { explorerUrl } from "../lib/config";
 import { fmtMon, fmtDate, shortAddr, timeLeft } from "../lib/format";
 import { PotProgress } from "./PotProgress";
+import { InvitePanel } from "./InvitePanel";
 
 function useAction() {
   const { writeContractAsync, isPending } = useWriteContract();
@@ -34,6 +35,12 @@ export function PotDetail({ potId, onBack }: { potId: bigint; onBack: () => void
     args: [potId, address ?? "0x0000000000000000000000000000000000000000"],
     query: { enabled: !!address, refetchInterval: POLL_MS },
   });
+  const { data: invited } = useReadContract({
+    ...goalPot,
+    functionName: "invitedOf",
+    args: [potId, address ?? "0x0000000000000000000000000000000000000000"],
+    query: { enabled: !!address, refetchInterval: POLL_MS },
+  });
 
   if (error)
     return (
@@ -56,7 +63,10 @@ export function PotDetail({ potId, onBack }: { potId: bigint; onBack: () => void
             <div className="rule-label">Pot Nº {String(potId).padStart(3, "0")}</div>
             <h2 className="sheet-title">{pot.name}</h2>
           </div>
-          <span className={`stamp ${STATE_LABEL[pot.state]}`}>{STATE_LABEL[pot.state]}</span>
+          <div className="row">
+            {!pot.openJoin && <span className="stamp active">invite-only</span>}
+            <span className={`stamp ${STATE_LABEL[pot.state]}`}>{STATE_LABEL[pot.state]}</span>
+          </div>
         </div>
 
         <div className="mt">
@@ -99,10 +109,12 @@ export function PotDetail({ potId, onBack }: { potId: bigint; onBack: () => void
           potId={potId}
           pot={pot}
           myDeposit={(myDeposit as bigint | undefined) ?? 0n}
+          invited={(invited as boolean | undefined) ?? false}
           goalReached={goalReached}
           deadlinePassed={deadlinePassed}
         />
       )}
+      {pot.state === 0 && !deadlinePassed && <InvitePanel potId={potId} pot={pot} />}
       {pot.state === 2 && (
         <RefundPanel potId={potId} myDeposit={(myDeposit as bigint | undefined) ?? 0n} pot={pot} />
       )}
@@ -121,12 +133,14 @@ function ActionsPanel({
   potId,
   pot,
   myDeposit,
+  invited,
   goalReached,
   deadlinePassed,
 }: {
   potId: bigint;
   pot: Pot;
   myDeposit: bigint;
+  invited: boolean;
   goalReached: boolean;
   deadlinePassed: boolean;
 }) {
@@ -134,13 +148,20 @@ function ActionsPanel({
   const [amount, setAmount] = useState("");
   const { writeContractAsync, isPending, err, ok, run } = useAction();
 
-  const depositDisabled = !isConnected || isPending || deadlinePassed;
+  const notInvited = !pot.openJoin && myDeposit === 0n && !invited;
+  const depositDisabled = !isConnected || isPending || deadlinePassed || notInvited;
 
   return (
     <section className="sheet">
       <h2 className="sheet-title">Pay in</h2>
       {myDeposit > 0n && (
         <p className="hint">Your stake: <b className="figure">{fmtMon(myDeposit)} MON</b></p>
+      )}
+      {isConnected && notInvited && (
+        <p className="hint">
+          This pot is invite-only and your address isn't on the allowlist yet — ask
+          the pot creator to invite you.
+        </p>
       )}
       {!deadlinePassed && (
         <div className="row mt">
