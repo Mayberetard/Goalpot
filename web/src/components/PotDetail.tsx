@@ -327,7 +327,8 @@ function ExitPanel({ potId, pot, myDeposit }: { potId: bigint; pot: Pot; myDepos
   const no = r?.[3] ?? 0n;
   const eligible = r?.[4] ?? 0n;
   const expired = open && Number(voteDeadline) * 1000 < Date.now();
-  const passed = open && yes * 2n > eligible;
+  const soloExit = open && eligible === 0n;
+  const passed = open && (soloExit || yes * 2n > eligible);
   const iAmRequester = !!address && requester?.toLowerCase() === address.toLowerCase();
   const yesPct = eligible > 0n ? Number((yes * 100n) / eligible) : 0;
   const noPct = eligible > 0n ? Number((no * 100n) / eligible) : 0;
@@ -368,7 +369,9 @@ function ExitPanel({ potId, pot, myDeposit }: { potId: bigint; pot: Pot; myDepos
           </div>
           <div className="row spread mt">
             <span className="figure" style={{ fontSize: "0.8rem" }}>
-              YES {fmtMon(yes)} · NO {fmtMon(no)} · needs &gt;{fmtMon(eligible / 2n)} MON yes
+              {soloExit
+                ? "no other members — the exit can be executed directly"
+                : `YES ${fmtMon(yes)} · NO ${fmtMon(no)} · needs >${fmtMon(eligible / 2n)} MON yes`}
             </span>
           </div>
           <div className="row mt">

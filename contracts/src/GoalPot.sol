@@ -346,7 +346,9 @@ contract GoalPot {
 
         uint96 d = depositOf[potId][r.requester];
         // Majority of the weight that was eligible when the request opened.
-        bool passed = d > 0 && uint256(r.yesWeight) * 2 > r.eligibleWeight;
+        // A sole member has no one to convince: zero eligible weight passes.
+        bool passed = d > 0 &&
+            (r.eligibleWeight == 0 || uint256(r.yesWeight) * 2 > r.eligibleWeight);
         if (!passed) revert VoteNotPassed();
 
         uint256 round = exitRound[potId];

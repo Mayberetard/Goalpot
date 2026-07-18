@@ -308,6 +308,17 @@ describe("GoalPot", () => {
       expect(r.requester).to.equal(bob.address);
     });
 
+    it("lets a sole member exit without votes (no one eligible to object)", async () => {
+      const { potId } = await createDefaultPot();
+      await pot.connect(bob).deposit(potId, { value: ethers.parseEther("2") });
+      await pot.connect(bob).requestExit(potId);
+      await expect(pot.connect(bob).executeExit(potId)).to.changeEtherBalance(
+        bob,
+        ethers.parseEther("1.9") // 2 minus 5% penalty
+      );
+      expect((await pot.getPot(potId)).memberCount).to.equal(0);
+    });
+
     it("keeps working toward the goal: penalties count as pot balance", async () => {
       const { potId } = await fundedPot();
       await pot.connect(dave).requestExit(potId);
