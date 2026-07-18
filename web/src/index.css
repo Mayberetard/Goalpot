@@ -1,0 +1,388 @@
+/* ─────────────────────────────────────────────────────────────
+   GOALPOT · "coöperative passbook" identity
+   Warm archival paper, oxblood + fir ink, ruled ledger lines,
+   rubber-stamp state badges. Fraunces for display, Spline Sans
+   Mono for figures — a bank passbook from a friendlier decade.
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  --paper: #f4ecdd;
+  --paper-deep: #ece1cb;
+  --line: #d8c9ac;
+  --ink: #2b2620;
+  --ink-soft: #6d6355;
+  --oxblood: #8c2f22;
+  --oxblood-deep: #6e2318;
+  --fir: #2f5240;
+  --fir-bright: #3e7257;
+  --brass: #a97e2f;
+  --card: #faf5ea;
+  --stamp-red: #b03a2a;
+  --shadow: 0 1px 0 var(--line), 0 8px 24px rgba(43, 38, 32, 0.08);
+  --serif: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --mono: "Spline Sans Mono", "SFMono-Regular", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+html {
+  background: var(--paper);
+}
+
+body {
+  font-family: var(--serif);
+  color: var(--ink);
+  background:
+    repeating-linear-gradient(
+      transparent 0,
+      transparent 31px,
+      rgba(140, 47, 34, 0.05) 31px,
+      rgba(140, 47, 34, 0.05) 32px
+    ),
+    var(--paper);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+#root {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 20px 96px;
+}
+
+/* ── header ─────────────────────────────────────────────── */
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 28px 0 14px;
+  border-bottom: 3px double var(--ink);
+}
+
+.wordmark {
+  font-weight: 900;
+  font-size: clamp(1.7rem, 4vw, 2.4rem);
+  letter-spacing: 0.01em;
+  font-variation-settings: "opsz" 144;
+  cursor: pointer;
+  user-select: none;
+}
+.wordmark .pot-glyph { color: var(--oxblood); }
+
+.tagline {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--ink-soft);
+}
+
+.net-chip {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: var(--fir);
+  border: 1px solid var(--fir);
+  border-radius: 999px;
+  padding: 2px 10px;
+  background: rgba(47, 82, 64, 0.06);
+}
+
+/* ── buttons ────────────────────────────────────────────── */
+button {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  border: 1.5px solid var(--ink);
+  background: var(--card);
+  color: var(--ink);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--ink);
+  transition: transform 0.06s ease, box-shadow 0.06s ease;
+}
+button:hover:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+button:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--ink);
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+button.primary {
+  background: var(--oxblood);
+  border-color: var(--oxblood-deep);
+  color: var(--paper);
+  box-shadow: 2px 2px 0 var(--oxblood-deep);
+}
+button.primary:hover:not(:disabled) { box-shadow: 1px 1px 0 var(--oxblood-deep); }
+button.primary:active:not(:disabled) { box-shadow: 0 0 0 var(--oxblood-deep); }
+button.approve {
+  background: var(--fir);
+  border-color: var(--fir);
+  color: var(--paper);
+  box-shadow: 2px 2px 0 #1d3529;
+}
+button.ghost {
+  border-style: dashed;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* ── cards / ledger sheets ──────────────────────────────── */
+.sheet {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 22px 24px;
+  margin-top: 22px;
+  position: relative;
+}
+
+.sheet-title {
+  font-weight: 600;
+  font-size: 1.35rem;
+}
+
+.rule-label {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+
+.figure {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── pot list rows ──────────────────────────────────────── */
+.pot-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 18px;
+  padding: 16px 4px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.pot-row:hover { background: rgba(169, 126, 47, 0.06); }
+.pot-row h3 { font-size: 1.15rem; font-weight: 600; }
+.pot-row .meta {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+/* ── progress bar: the filling pot ──────────────────────── */
+.pot-progress {
+  position: relative;
+  height: 34px;
+  border: 2px solid var(--ink);
+  border-radius: 8px 8px 14px 14px;
+  background: var(--paper-deep);
+  overflow: hidden;
+}
+.pot-progress .fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(180deg, var(--fir-bright), var(--fir));
+  transition: width 0.6s ease;
+}
+.pot-progress .fill.full {
+  background: linear-gradient(180deg, #c8963d, var(--brass));
+}
+.pot-progress .marks {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+.pot-progress .marks i {
+  flex: 1;
+  border-right: 1px dashed rgba(43, 38, 32, 0.25);
+}
+.pot-progress .marks i:last-child { border-right: none; }
+.pot-progress .label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink);
+  mix-blend-mode: multiply;
+}
+
+/* ── rubber stamps ──────────────────────────────────────── */
+.stamp {
+  display: inline-block;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  transform: rotate(-2deg);
+  opacity: 0.85;
+}
+.stamp.active { color: var(--fir); }
+.stamp.released { color: var(--brass); }
+.stamp.refunding { color: var(--stamp-red); }
+
+/* ── ledger table ───────────────────────────────────────── */
+table.ledger {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+table.ledger th {
+  text-align: left;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+  border-bottom: 2px solid var(--ink);
+  padding: 6px 8px;
+}
+table.ledger td {
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+table.ledger tr.me td { background: rgba(47, 82, 64, 0.07); }
+
+/* ── forms ──────────────────────────────────────────────── */
+label.field {
+  display: block;
+  margin-top: 14px;
+}
+label.field span {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+input, select {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1.5px solid var(--ink);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+}
+input:focus, select:focus {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 18px;
+}
+@media (max-width: 620px) {
+  .form-grid { grid-template-columns: 1fr; }
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  font-style: italic;
+  margin-top: 6px;
+}
+
+.error-note {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--stamp-red);
+  margin-top: 10px;
+  word-break: break-word;
+}
+.ok-note {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--fir);
+  margin-top: 10px;
+}
+
+/* ── vote panel ─────────────────────────────────────────── */
+.vote-bar {
+  display: flex;
+  height: 14px;
+  border: 1.5px solid var(--ink);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--paper-deep);
+}
+.vote-bar .yes { background: var(--fir-bright); }
+.vote-bar .no { background: var(--stamp-red); }
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.spread { justify-content: space-between; }
+.mt { margin-top: 14px; }
+
+.crumb {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--oxblood);
+  cursor: pointer;
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin-top: 20px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.empty-note {
+  text-align: center;
+  padding: 48px 0;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+footer.colophon {
+  margin-top: 56px;
+  padding-top: 14px;
+  border-top: 3px double var(--ink);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+footer.colophon a { color: var(--oxblood); }
