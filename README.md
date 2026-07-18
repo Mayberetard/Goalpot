@@ -18,7 +18,7 @@ hostage — the group can always vote you out humanely.
 | | |
 | --- | --- |
 | **App** | <https://goalpot-pi.vercel.app/> |
-| **Contract (Monad testnet)** | [`0x14F6F42d58110Eb8f1486B8D9B703ABa24aaE48D`](https://testnet.monadexplorer.com/address/0x14F6F42d58110Eb8f1486B8D9B703ABa24aaE48D) |
+| **Contract (Monad testnet)** | [`0xE154E77956466e102F8fa1AF63046fC85A82C661`](https://testnet.monadexplorer.com/address/0xE154E77956466e102F8fa1AF63046fC85A82C661) |
 
 To try it: get testnet MON from <https://faucet.monad.xyz>, open the app, connect
 a wallet, and start or join a pot. Every number on screen is a live read from the
