@@ -32,22 +32,33 @@ deployed contract the app renders a setup notice.
 cd contracts
 npm install
 npm test                      # 16 tests over release/refund/vote paths
-cp .env.example .env          # add PRIVATE_KEY (throwaway key, faucet-funded)
+cp .env.example .env          # then fill it in, see table below
 npm run deploy:testnet        # deploys to Monad testnet (chain id 10143)
 npx hardhat verify --network monadTestnet <ADDRESS>   # Sourcify verification
 ```
 
-Fund the deployer at <https://faucet.monad.xyz>. For mainnet: `npm run deploy:mainnet`.
+| Variable (`contracts/.env`) | Required? | What to put there |
+| --- | --- | --- |
+| `PRIVATE_KEY` | **yes** | Export from a **new, throwaway wallet** (MetaMask → account details → show private key), then fund that wallet at <https://faucet.monad.xyz>. Never use a wallet holding real funds. |
+| `MONAD_RPC_URL` | optional | Leave empty to use the public `https://testnet-rpc.monad.xyz`; set it only if you have your own RPC endpoint. |
+
+For mainnet: `npm run deploy:mainnet`.
 
 ### 2. Web app
 
 ```bash
 cd web
 npm install
-cp .env.example .env          # set VITE_GOALPOT_ADDRESS=0x... from the deploy
+cp .env.example .env          # then fill it in, see table below
 npm run dev                   # local dev
 npm run build                 # static bundle in dist/ — host on Vercel/Netlify/Pages
 ```
+
+| Variable (`web/.env`) | Required? | What to put there |
+| --- | --- | --- |
+| `VITE_GOALPOT_ADDRESS` | **yes** | Copy the address printed by `npm run deploy:testnet` (the line `GoalPot deployed at: 0x…`). |
+| `VITE_MONAD_NETWORK` | optional | `testnet` (default) or `mainnet`. |
+| `VITE_RPC_URL` | optional | Override the chain's public RPC — useful for a local node or a private endpoint. Leave empty otherwise. |
 
 Hosting is a static SPA: on Vercel set the project root to `web/`, add the
 `VITE_GOALPOT_ADDRESS` env var, done.
