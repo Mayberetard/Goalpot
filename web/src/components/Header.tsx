@@ -1,16 +1,16 @@
-import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
+import { useState } from "react";
+import { useAccount, useDisconnect, useSwitchChain } from "wagmi";
 import { chain } from "../lib/config";
 import { shortAddr } from "../lib/format";
+import { WalletModal } from "./WalletModal";
 
 export function Header({ onHome }: { onHome: () => void }) {
   const { address, isConnected, chainId } = useAccount();
-  const { connect, connectors, isPending, error } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const wrongChain = isConnected && chainId !== chain.id;
-  const hasWallet =
-    typeof window !== "undefined" && typeof (window as any).ethereum !== "undefined";
 
   return (
     <header className="masthead">
@@ -18,39 +18,23 @@ export function Header({ onHome }: { onHome: () => void }) {
         GOAL<span className="pot-glyph">POT</span>
         <div className="tagline">coöperative savings · dao release</div>
       </div>
-      <div className="row" style={{ flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-        <div className="row">
-          <span className="net-chip">{chain.name}</span>
-          {!isConnected ? (
-            <button
-              className="primary"
-              disabled={isPending || !hasWallet}
-              title={hasWallet ? undefined : "No wallet extension detected"}
-              onClick={() => connect({ connector: connectors[0] })}
-            >
-              {isPending ? "Connecting…" : "Connect wallet"}
-            </button>
-          ) : wrongChain ? (
-            <button className="primary" onClick={() => switchChain({ chainId: chain.id })}>
-              Switch to {chain.name}
-            </button>
-          ) : (
-            <button className="ghost" onClick={() => disconnect()} title="Disconnect">
-              {shortAddr(address!)} ✕
-            </button>
-          )}
-        </div>
-        {!hasWallet && (
-          <span className="hint">
-            Install a wallet (MetaMask, Rabby…) to join a pot.
-          </span>
-        )}
-        {error && !isConnected && (
-          <span className="error-note" style={{ marginTop: 0 }}>
-            {error.message.split("\n")[0]}
-          </span>
+      <div className="row">
+        <span className="net-chip">{chain.name}</span>
+        {!isConnected ? (
+          <button className="primary" onClick={() => setPickerOpen(true)}>
+            Connect wallet
+          </button>
+        ) : wrongChain ? (
+          <button className="primary" onClick={() => switchChain({ chainId: chain.id })}>
+            Switch to {chain.name}
+          </button>
+        ) : (
+          <button className="ghost" onClick={() => disconnect()} title="Disconnect">
+            {shortAddr(address!)} ✕
+          </button>
         )}
       </div>
+      {pickerOpen && !isConnected && <WalletModal onClose={() => setPickerOpen(false)} />}
     </header>
   );
 }
