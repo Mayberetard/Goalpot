@@ -19,7 +19,9 @@ async function main() {
       now + 30 * DAY,
       500,
       ethers.parseEther("0.1"),
-      3 * DAY
+      3 * DAY,
+      true,
+      []
     )
   ).wait();
   await (await pot.connect(bob).deposit(0, { value: ethers.parseEther("2.5") })).wait();
@@ -36,7 +38,9 @@ async function main() {
       now + 7 * DAY,
       1000,
       ethers.parseEther("0.05"),
-      1 * DAY
+      1 * DAY,
+      false,
+      [alice.address, bob.address]
     )
   ).wait();
   await (await pot.connect(alice).deposit(1, { value: ethers.parseEther("4") })).wait();

@@ -32,7 +32,9 @@ describe("GoalPot", () => {
         deadline,
         overrides.penaltyBps ?? PENALTY_BPS,
         overrides.minDeposit ?? MIN_DEPOSIT,
-        overrides.votingPeriod ?? VOTING_PERIOD
+        overrides.votingPeriod ?? VOTING_PERIOD,
+        overrides.openJoin ?? true,
+        overrides.invitees ?? []
       );
     await tx.wait();
     return { potId: (await pot.potCount()) - 1n, deadline };
@@ -56,7 +58,7 @@ describe("GoalPot", () => {
 
     it("rejects bad parameters", async () => {
       const deadline = (await now()) + DAY;
-      const good = ["Pot", beneficiary.address, GOAL, deadline, 500, MIN_DEPOSIT, VOTING_PERIOD];
+      const good = ["Pot", beneficiary.address, GOAL, deadline, 500, MIN_DEPOSIT, VOTING_PERIOD, true, []];
       const cases = [
         ["", ...good.slice(1)], // empty name
         ["x".repeat(65), ...good.slice(1)], // name too long
@@ -64,11 +66,49 @@ describe("GoalPot", () => {
         [good[0], good[1], 0, ...good.slice(3)], // zero goal
         [...good.slice(0, 3), (await now()) - 1, ...good.slice(4)], // past deadline
         [...good.slice(0, 4), 2001, ...good.slice(5)], // penalty > 20%
-        [...good.slice(0, 6), 60], // voting period too short
+        [...good.slice(0, 6), 60, ...good.slice(7)], // voting period too short
       ];
       for (const args of cases) {
         await expect(pot.createPot(...args)).to.be.revertedWithCustomError(pot, "BadParams");
       }
+    });
+  });
+
+  describe("invite-only pots", () => {
+    it("blocks uninvited depositors and admits invited ones", async () => {
+      const { potId } = await createDefaultPot({
+        openJoin: false,
+        invitees: [], // seeded empty; creator invites later
+      });
+      await expect(
+        pot.connect(bob).deposit(potId, { value: ethers.parseEther("1") })
+      ).to.be.revertedWithCustomError(pot, "NotInvited");
+
+      await pot.connect(alice).inviteMembers(potId, [bob.address]);
+      await pot.connect(bob).deposit(potId, { value: ethers.parseEther("1") });
+      expect(await pot.depositOf(potId, bob.address)).to.equal(ethers.parseEther("1"));
+    });
+
+    it("seeds invitees at creation and always allows the creator", async () => {
+      const { potId } = await createDefaultPot({
+        openJoin: false,
+        invitees: [carol.address],
+      });
+      await pot.connect(carol).deposit(potId, { value: ethers.parseEther("1") });
+      await pot.connect(alice).deposit(potId, { value: ethers.parseEther("1") }); // creator
+      expect(await pot.invitedOf(potId, carol.address)).to.equal(true);
+    });
+
+    it("only the creator can invite, and not on open pots", async () => {
+      const { potId } = await createDefaultPot({ openJoin: false });
+      await expect(
+        pot.connect(bob).inviteMembers(potId, [bob.address])
+      ).to.be.revertedWithCustomError(pot, "NotCreator");
+
+      const { potId: openId } = await createDefaultPot();
+      await expect(
+        pot.connect(alice).inviteMembers(openId, [bob.address])
+      ).to.be.revertedWithCustomError(pot, "BadParams");
     });
   });
 
