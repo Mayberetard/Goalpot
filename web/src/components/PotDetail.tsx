@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useAccount, useReadContract, useWriteContract } from "wagmi";
+import { useAccount, useDisconnect, useReadContract, useWriteContract } from "wagmi";
+import { isStaleConnectorError, STALE_SESSION_MSG } from "../lib/errors";
 import { parseEther } from "viem";
 import { goalPot, usePot, POLL_MS, STATE_LABEL, type Pot } from "../lib/hooks";
 import { explorerUrl } from "../lib/config";
@@ -9,6 +10,7 @@ import { InvitePanel } from "./InvitePanel";
 
 function useAction() {
   const { writeContractAsync, isPending } = useWriteContract();
+  const { disconnect } = useDisconnect();
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   async function run(fn: () => Promise<unknown>, okMsg: string) {
@@ -18,7 +20,12 @@ function useAction() {
       await fn();
       setOk(okMsg);
     } catch (e) {
-      setErr(e instanceof Error ? e.message.split("\n")[0] : String(e));
+      if (isStaleConnectorError(e)) {
+        disconnect();
+        setErr(STALE_SESSION_MSG);
+      } else {
+        setErr(e instanceof Error ? e.message.split("\n")[0] : String(e));
+      }
     }
   }
   return { writeContractAsync, isPending, err, ok, run };
@@ -42,13 +49,25 @@ export function PotDetail({ potId, onBack }: { potId: bigint; onBack: () => void
     query: { enabled: !!address, refetchInterval: POLL_MS },
   });
 
-  if (error)
+  if (error) {
+    const notFound = /PotNotFound|reverted/i.test(error.message);
     return (
       <section className="sheet">
-        <p className="error-note">Pot not found or RPC unreachable: {error.message.split("\n")[0]}</p>
+        {notFound ? (
+          <>
+            <div className="rule-label">No such entry</div>
+            <p>
+              This pot doesn't exist on the current contract — the link may be
+              from an older deployment, or the pot hasn't been created yet.
+            </p>
+          </>
+        ) : (
+          <p className="error-note">RPC unreachable: {error.message.split("\n")[0]}</p>
+        )}
         <button className="crumb" onClick={onBack}>← back to the ledger</button>
       </section>
     );
+  }
   if (!pot) return <section className="sheet"><p className="empty-note">Reading the chain…</p></section>;
 
   const balance = pot.totalDeposited + pot.penaltyPool;

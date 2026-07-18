@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { isAddress } from "viem";
 import QRCode from "qrcode";
-import { useWriteContract } from "wagmi";
+import { useDisconnect, useWriteContract } from "wagmi";
 import { goalPot, type Pot } from "../lib/hooks";
+import { isStaleConnectorError, STALE_SESSION_MSG } from "../lib/errors";
 
 export function InvitePanel({ potId, pot }: { potId: bigint; pot: Pot }) {
   const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
   const { writeContractAsync, isPending } = useWriteContract();
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
@@ -53,7 +55,12 @@ export function InvitePanel({ potId, pot }: { potId: bigint; pot: Pot }) {
       setInviteesRaw("");
       setOk(`Invited ${list.length} address${list.length === 1 ? "" : "es"}.`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message.split("\n")[0] : String(e));
+      if (isStaleConnectorError(e)) {
+        disconnect();
+        setErr(STALE_SESSION_MSG);
+      } else {
+        setErr(e instanceof Error ? e.message.split("\n")[0] : String(e));
+      }
     }
   }
 

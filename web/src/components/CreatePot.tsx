@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { useAccount, usePublicClient, useWriteContract } from "wagmi";
+import { useAccount, useDisconnect, usePublicClient, useWriteContract } from "wagmi";
 import { isAddress, parseEther } from "viem";
 import { goalPot } from "../lib/hooks";
+import { isStaleConnectorError, STALE_SESSION_MSG } from "../lib/errors";
 
 const DAY = 86_400;
 
 export function CreatePot({ onDone }: { onDone: (id?: bigint) => void }) {
   const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
   const publicClient = usePublicClient();
   const { writeContractAsync, isPending } = useWriteContract();
 
@@ -81,7 +83,12 @@ export function CreatePot({ onDone }: { onDone: (id?: bigint) => void }) {
       const id = log?.topics[1] ? BigInt(log.topics[1]) : undefined;
       onDone(id);
     } catch (e) {
-      setErr(e instanceof Error ? e.message.split("\n")[0] : String(e));
+      if (isStaleConnectorError(e)) {
+        disconnect();
+        setErr(STALE_SESSION_MSG);
+      } else {
+        setErr(e instanceof Error ? e.message.split("\n")[0] : String(e));
+      }
     } finally {
       setWaiting(false);
     }
