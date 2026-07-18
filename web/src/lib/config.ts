@@ -1,5 +1,5 @@
 import { createConfig, http } from "wagmi";
-import { injected } from "wagmi/connectors";
+import { injected, walletConnect } from "wagmi/connectors";
 import { defineChain } from "viem";
 
 export const monadTestnet = defineChain({
@@ -33,9 +33,29 @@ export const chain = useMainnet ? monadMainnet : monadTestnet;
 /** Deployed GoalPot contract. Set via web/.env → VITE_GOALPOT_ADDRESS=0x... */
 export const GOALPOT_ADDRESS = (import.meta.env.VITE_GOALPOT_ADDRESS ?? "") as `0x${string}`;
 
+/** WalletConnect project id (free at https://cloud.reown.com). Optional:
+ *  without it the app still offers extension + in-wallet-browser connects. */
+export const WC_PROJECT_ID = import.meta.env.VITE_WC_PROJECT_ID ?? "";
+
 export const wagmiConfig = createConfig({
   chains: [chain],
-  connectors: [injected()],
+  connectors: [
+    injected(),
+    ...(WC_PROJECT_ID
+      ? [
+          walletConnect({
+            projectId: WC_PROJECT_ID,
+            showQrModal: true,
+            metadata: {
+              name: "Goalpot",
+              description: "Group savings pots on Monad with DAO-gated early exit",
+              url: typeof window !== "undefined" ? window.location.origin : "",
+              icons: [],
+            },
+          }),
+        ]
+      : []),
+  ],
   transports: {
     // VITE_RPC_URL is a dev-only override (e.g. a local node); defaults to the
     // chain's public RPC.

@@ -59,6 +59,13 @@ npm run build                 # static bundle in dist/ — host on Vercel/Netlif
 | `VITE_GOALPOT_ADDRESS` | **yes** | Copy the address printed by `npm run deploy:testnet` (the line `GoalPot deployed at: 0x…`). |
 | `VITE_MONAD_NETWORK` | optional | `testnet` (default) or `mainnet`. |
 | `VITE_RPC_URL` | optional | Override the chain's public RPC — useful for a local node or a private endpoint. Leave empty otherwise. |
+| `VITE_WC_PROJECT_ID` | optional | WalletConnect project id — create one free at <https://cloud.reown.com>. Enables the "connect any mobile wallet" QR/deep-link option. Without it, desktop uses the browser extension and mobile users get MetaMask/Phantom in-app-browser links. |
+
+**Wallet support**: the Connect button opens a wallet picker — browser extension
+(MetaMask, Rabby, Phantom…), WalletConnect (if `VITE_WC_PROJECT_ID` is set), and
+on mobile, deep links that reopen the app inside MetaMask's or Phantom's in-app
+browser. Deep links require the app to be on a public URL (they can't reach
+`localhost`).
 
 Hosting is a static SPA: on Vercel set the project root to `web/`, add the
 `VITE_GOALPOT_ADDRESS` env var, done.
