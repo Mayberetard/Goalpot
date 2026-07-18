@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useReadContract } from "wagmi";
+import { goalPot } from "./lib/hooks";
 import { Header } from "./components/Header";
 import { PotList } from "./components/PotList";
 import { PotDetail } from "./components/PotDetail";
@@ -15,8 +17,27 @@ function parseHash(): Route {
   return { view: "list" };
 }
 
+/** Detects a configured address that answers basic calls but lacks functions
+ *  from the current ABI — i.e. an older GoalPot deployment left in
+ *  VITE_GOALPOT_ADDRESS after a breaking contract change. */
+function useVersionMismatch(): boolean {
+  const base = useReadContract({
+    ...goalPot,
+    functionName: "potCount",
+    query: { enabled: !!GOALPOT_ADDRESS, retry: 1, staleTime: Infinity },
+  });
+  const probe = useReadContract({
+    ...goalPot,
+    functionName: "invitedOf", // exists only since the invite-only update
+    args: [0n, "0x0000000000000000000000000000000000000001"],
+    query: { enabled: !!GOALPOT_ADDRESS, retry: 1, staleTime: Infinity },
+  });
+  return base.isSuccess && probe.isError;
+}
+
 export default function App() {
   const [route, setRoute] = useState<Route>(parseHash);
+  const versionMismatch = useVersionMismatch();
 
   useEffect(() => {
     const onHash = () => setRoute(parseHash());
@@ -31,6 +52,18 @@ export default function App() {
   return (
     <>
       <Header onHome={() => go("/")} />
+      {versionMismatch && (
+        <div className="sheet">
+          <div className="rule-label">Configuration problem</div>
+          <p>
+            The configured contract at <code>{GOALPOT_ADDRESS}</code> is an{" "}
+            <b>older GoalPot deployment</b> that doesn't match this version of the
+            app — transactions will fail. Operator: redeploy the contract from the
+            current code (<code>npm run deploy:testnet</code>) and update{" "}
+            <code>VITE_GOALPOT_ADDRESS</code>.
+          </p>
+        </div>
+      )}
       {!GOALPOT_ADDRESS ? (
         <div className="sheet">
           <div className="rule-label">Setup required</div>

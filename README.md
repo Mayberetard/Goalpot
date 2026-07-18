@@ -13,6 +13,17 @@ Built for the [Spark hackathon](https://buildanything.so/hackathons/spark). The
 DAO-gated early exit is the differentiator: your savings are committed, but never
 hostage — the group can always vote you out humanely.
 
+## Live
+
+| | |
+| --- | --- |
+| **App** | <https://goalpot-pi.vercel.app/> |
+| **Contract (Monad testnet)** | [`0x14F6F42d58110Eb8f1486B8D9B703ABa24aaE48D`](https://testnet.monadexplorer.com/address/0x14F6F42d58110Eb8f1486B8D9B703ABa24aaE48D) |
+
+To try it: get testnet MON from <https://faucet.monad.xyz>, open the app, connect
+a wallet, and start or join a pot. Every number on screen is a live read from the
+contract above.
+
 ## Repository layout
 
 ```
