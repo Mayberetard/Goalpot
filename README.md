@@ -1,5 +1,7 @@
 # GOALPOT — Group Savings Pot with DAO Release
 
+![CI](https://github.com/Mayberetard/Goalpot/actions/workflows/ci.yml/badge.svg)
+
 A coöperative savings ledger on **Monad**. Friends pool native MON toward a shared
 goal. The contract — not any person — decides what happens next:
 
