@@ -39,6 +39,7 @@ contract GoalPot {
     error NotInvited();
     error NotCreator();
     error TooManyInvites();
+    error NotBeneficiary();
 
     // ---------------------------------------------------------------- types
     enum PotState {
@@ -82,6 +83,7 @@ contract GoalPot {
     mapping(uint256 => address[]) internal memberList; // append-only, for UI reads
     mapping(uint256 => mapping(address => bool)) internal everMember;
     mapping(uint256 => mapping(address => bool)) public invitedOf; // invite-only pots
+    mapping(uint256 => uint256) public payoutOf; // released, unclaimed beneficiary funds
 
     mapping(uint256 => ExitRequest) public exitRequestOf; // one live request per pot
     mapping(uint256 => uint256) public exitRound;         // bumps per request
@@ -116,6 +118,7 @@ contract GoalPot {
     event ExitExecuted(uint256 indexed potId, uint256 indexed round, address indexed requester, uint256 payout, uint256 penalty);
     event ExitClosed(uint256 indexed potId, uint256 indexed round, bool passed);
     event MembersInvited(uint256 indexed potId, address[] invitees);
+    event PayoutClaimed(uint256 indexed potId, address indexed beneficiary, uint256 amount);
 
     // ---------------------------------------------------------------- modifiers
     modifier nonReentrant() {
@@ -231,9 +234,10 @@ contract GoalPot {
     }
 
     // ---------------------------------------------------------------- release
-    /// @notice Goal reached -> anyone can push the pot (deposits + retained
-    ///         penalties) to the beneficiary.
-    function release(uint256 potId) external exists(potId) nonReentrant {
+    /// @notice Goal reached -> anyone can settle the pot. Funds are credited to
+    ///         the beneficiary (pull payment) rather than pushed, so a
+    ///         beneficiary that cannot receive value can never freeze the pot.
+    function release(uint256 potId) external exists(potId) {
         Pot storage p = pots[potId];
         if (p.state != PotState.Active) revert NotActive();
         uint256 balance = uint256(p.totalDeposited) + p.penaltyPool;
@@ -242,10 +246,22 @@ contract GoalPot {
         p.state = PotState.Released;
         p.totalDeposited = 0;
         p.penaltyPool = 0;
+        payoutOf[potId] = balance;
 
-        (bool ok, ) = p.beneficiary.call{value: balance}("");
-        if (!ok) revert TransferFailed();
         emit Released(potId, p.beneficiary, balance);
+    }
+
+    /// @notice Beneficiary pulls the released pot.
+    function claimPayout(uint256 potId) external exists(potId) nonReentrant {
+        Pot storage p = pots[potId];
+        if (msg.sender != p.beneficiary) revert NotBeneficiary();
+        uint256 amount = payoutOf[potId];
+        if (amount == 0) revert NothingToClaim();
+        payoutOf[potId] = 0;
+
+        (bool ok, ) = msg.sender.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+        emit PayoutClaimed(potId, msg.sender, amount);
     }
 
     // ---------------------------------------------------------------- refunds

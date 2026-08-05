@@ -1,5 +1,7 @@
 # GOALPOT — Group Savings Pot with DAO Release
 
+![CI](https://github.com/Mayberetard/Goalpot/actions/workflows/ci.yml/badge.svg)
+
 A coöperative savings ledger on **Monad**. Friends pool native MON toward a shared
 goal. The contract — not any person — decides what happens next:
 
@@ -124,9 +126,10 @@ The local node mirrors Monad testnet's chain id, so the app needs no code change
   `receive`/`fallback`; direct transfers revert.
 - **Reentrancy** — a mutex on every value-moving function, plus strict
   checks-effects-interactions ordering (state zeroed before transfer).
-- **Pull payments** — refunds are claimed per-member against a snapshot taken when
-  refunding starts, so payout math is order-independent and one member's revert
-  can't block anyone else.
+- **Pull payments everywhere** — refunds are claimed per-member against a snapshot
+  taken when refunding starts, and the beneficiary payout is credited on release
+  and pulled via `claimPayout`. No transfer is ever pushed, so no recipient — not
+  even a hostile beneficiary contract — can freeze settlement for anyone else.
 - **No unbounded loops in state-changing paths** — member lists are only iterated
   in paginated view functions; a pot with thousands of members still settles in O(1)
   per claim.

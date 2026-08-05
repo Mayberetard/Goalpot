@@ -134,6 +134,7 @@ export function PotDetail({ potId, onBack }: { potId: bigint; onBack: () => void
         />
       )}
       {pot.state === 0 && !deadlinePassed && <InvitePanel potId={potId} pot={pot} />}
+      {pot.state === 1 && <ReleasedPanel potId={potId} pot={pot} />}
       {pot.state === 2 && (
         <RefundPanel potId={potId} myDeposit={(myDeposit as bigint | undefined) ?? 0n} pot={pot} />
       )}
@@ -224,11 +225,11 @@ function ActionsPanel({
               run(
                 () =>
                   writeContractAsync({ ...goalPot, functionName: "release", args: [potId] }),
-                "Release sent."
+                "Release sent — the beneficiary can claim the payout."
               )
             }
           >
-            Release {fmtMon(pot.totalDeposited + pot.penaltyPool)} MON → beneficiary
+            Release {fmtMon(pot.totalDeposited + pot.penaltyPool)} MON for the beneficiary
           </button>
         </div>
       )}
@@ -249,6 +250,59 @@ function ActionsPanel({
             Claim refund
           </button>
         </div>
+      )}
+      {err && <p className="error-note">{err}</p>}
+      {ok && <p className="ok-note">{ok}</p>}
+    </section>
+  );
+}
+
+function ReleasedPanel({ potId, pot }: { potId: bigint; pot: Pot }) {
+  const { address, isConnected } = useAccount();
+  const { writeContractAsync, isPending, err, ok, run } = useAction();
+  const { data: payout } = useReadContract({
+    ...goalPot,
+    functionName: "payoutOf",
+    args: [potId],
+    query: { refetchInterval: POLL_MS },
+  });
+  const pending = (payout as bigint | undefined) ?? 0n;
+  const isBeneficiary =
+    !!address && address.toLowerCase() === pot.beneficiary.toLowerCase();
+
+  return (
+    <section className="sheet">
+      <h2 className="sheet-title">Goal reached — released</h2>
+      {pending > 0n ? (
+        isBeneficiary ? (
+          <>
+            <p className="hint">The pot is yours to collect.</p>
+            <button
+              className="primary mt"
+              disabled={!isConnected || isPending}
+              onClick={() =>
+                run(
+                  () =>
+                    writeContractAsync({
+                      ...goalPot,
+                      functionName: "claimPayout",
+                      args: [potId],
+                    }),
+                  "Payout claimed."
+                )
+              }
+            >
+              Claim {fmtMon(pending)} MON
+            </button>
+          </>
+        ) : (
+          <p className="hint">
+            {fmtMon(pending)} MON is waiting for the beneficiary (
+            {shortAddr(pot.beneficiary)}) to claim.
+          </p>
+        )
+      ) : (
+        <p className="hint">The payout has been claimed. This ledger is closed.</p>
       )}
       {err && <p className="error-note">{err}</p>}
       {ok && <p className="ok-note">{ok}</p>}
