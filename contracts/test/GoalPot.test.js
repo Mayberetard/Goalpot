@@ -155,18 +155,50 @@ describe("GoalPot", () => {
   });
 
   describe("release (goal reached)", () => {
-    it("sends the whole pot to the beneficiary once the goal is met", async () => {
+    it("credits the pot to the beneficiary, who pulls it with claimPayout", async () => {
       const { potId } = await createDefaultPot();
       await pot.connect(bob).deposit(potId, { value: ethers.parseEther("6") });
       await pot.connect(carol).deposit(potId, { value: ethers.parseEther("4") });
 
-      const before = await ethers.provider.getBalance(beneficiary.address);
       await expect(pot.connect(dave).release(potId)) // anyone can trigger
         .to.emit(pot, "Released")
         .withArgs(potId, beneficiary.address, GOAL);
-      const after = await ethers.provider.getBalance(beneficiary.address);
-      expect(after - before).to.equal(GOAL);
       expect((await pot.getPot(potId)).state).to.equal(1); // Released
+      expect(await pot.payoutOf(potId)).to.equal(GOAL);
+
+      await expect(pot.connect(beneficiary).claimPayout(potId)).to.changeEtherBalance(
+        beneficiary,
+        GOAL
+      );
+      await expect(
+        pot.connect(beneficiary).claimPayout(potId)
+      ).to.be.revertedWithCustomError(pot, "NothingToClaim");
+    });
+
+    it("only the beneficiary can claim the payout", async () => {
+      const { potId } = await createDefaultPot();
+      await pot.connect(bob).deposit(potId, { value: GOAL });
+      await pot.release(potId);
+      await expect(pot.connect(bob).claimPayout(potId)).to.be.revertedWithCustomError(
+        pot,
+        "NotBeneficiary"
+      );
+    });
+
+    it("a beneficiary that cannot receive value cannot freeze the pot", async () => {
+      // Deploy a contract with no receive/fallback as the beneficiary: GoalPot
+      // itself rejects plain transfers, so it works as the hostile recipient.
+      const hostile = await (await ethers.getContractFactory("GoalPot")).deploy();
+      const { potId } = await createDefaultPot({
+        beneficiary: await hostile.getAddress(),
+      });
+      await pot.connect(bob).deposit(potId, { value: GOAL });
+
+      // Release still settles the pot; only the claim (by the broken recipient)
+      // would fail, harming no one else.
+      await pot.release(potId);
+      expect((await pot.getPot(potId)).state).to.equal(1); // Released
+      expect(await pot.payoutOf(potId)).to.equal(GOAL);
     });
 
     it("reverts if the goal is not reached", async () => {
