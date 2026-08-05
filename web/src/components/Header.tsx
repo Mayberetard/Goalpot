@@ -4,7 +4,15 @@ import { chain } from "../lib/config";
 import { shortAddr } from "../lib/format";
 import { WalletModal } from "./WalletModal";
 
-export function Header({ onHome }: { onHome: () => void }) {
+export function Header({
+  onHome,
+  theme,
+  onToggleTheme,
+}: {
+  onHome: () => void;
+  theme: "light" | "dark";
+  onToggleTheme: () => void;
+}) {
   const { address, isConnected, chainId } = useAccount();
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
@@ -19,6 +27,14 @@ export function Header({ onHome }: { onHome: () => void }) {
         <div className="tagline">coöperative savings · dao release</div>
       </div>
       <div className="row">
+        <button
+          className="ghost theme-toggle"
+          onClick={onToggleTheme}
+          title={theme === "dark" ? "Switch to day ledger" : "Switch to night ledger"}
+          aria-label="Toggle dark mode"
+        >
+          {theme === "dark" ? "☀" : "☾"}
+        </button>
         <span className="net-chip">{chain.name}</span>
         {!isConnected ? (
           <button className="primary" onClick={() => setPickerOpen(true)}>

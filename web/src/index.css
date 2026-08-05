@@ -18,9 +18,32 @@
   --brass: #a97e2f;
   --card: #faf5ea;
   --stamp-red: #b03a2a;
+  --rule-tint: rgba(140, 47, 34, 0.05);
+  --overlay: rgba(43, 38, 32, 0.45);
   --shadow: 0 1px 0 var(--line), 0 8px 24px rgba(43, 38, 32, 0.08);
   --serif: "Fraunces", "Iowan Old Style", Georgia, serif;
   --mono: "Spline Sans Mono", "SFMono-Regular", ui-monospace, monospace;
+  color-scheme: light;
+}
+
+/* night ledger — same passbook, after closing time */
+:root[data-theme="dark"] {
+  --paper: #191712;
+  --paper-deep: #211e17;
+  --line: #3a352a;
+  --ink: #e9dfc7;
+  --ink-soft: #9a8f79;
+  --oxblood: #c05a48;
+  --oxblood-deep: #8c2f22;
+  --fir: #4d7d63;
+  --fir-bright: #5f966f;
+  --brass: #c69a4b;
+  --card: #201d16;
+  --stamp-red: #cf5f4c;
+  --rule-tint: rgba(192, 90, 72, 0.06);
+  --overlay: rgba(0, 0, 0, 0.6);
+  --shadow: 0 1px 0 var(--line), 0 8px 24px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
 }
 
 * {
@@ -39,8 +62,8 @@ body {
     repeating-linear-gradient(
       transparent 0,
       transparent 31px,
-      rgba(140, 47, 34, 0.05) 31px,
-      rgba(140, 47, 34, 0.05) 32px
+      var(--rule-tint) 31px,
+      var(--rule-tint) 32px
     ),
     var(--paper);
   min-height: 100vh;
@@ -51,6 +74,11 @@ body {
   max-width: 880px;
   margin: 0 auto;
   padding: 0 20px 96px;
+}
+
+a {
+  color: var(--oxblood);
+  text-underline-offset: 3px;
 }
 
 /* ── header ─────────────────────────────────────────────── */
@@ -225,8 +253,15 @@ button.ghost {
   font-family: var(--mono);
   font-size: 0.78rem;
   font-weight: 700;
-  color: var(--ink);
+  color: #2b2620;
   mix-blend-mode: multiply;
+  text-align: center;
+  padding: 0 6px;
+}
+:root[data-theme="dark"] .pot-progress .label {
+  color: #f4ecdd;
+  mix-blend-mode: normal;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 /* ── rubber stamps ──────────────────────────────────────── */
@@ -248,6 +283,9 @@ button.ghost {
 .stamp.refunding { color: var(--stamp-red); }
 
 /* ── ledger table ───────────────────────────────────────── */
+.table-wrap {
+  overflow-x: auto; /* keep wide ledgers scrollable on phones */
+}
 table.ledger {
   width: 100%;
   border-collapse: collapse;
@@ -377,7 +415,7 @@ input:focus, select:focus, textarea:focus {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(43, 38, 32, 0.45);
+  background: var(--overlay);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -443,3 +481,26 @@ footer.colophon {
   gap: 8px;
 }
 footer.colophon a { color: var(--oxblood); }
+.colophon-links { display: flex; gap: 14px; }
+
+.theme-toggle {
+  font-size: 1rem;
+  line-height: 1;
+  padding: 6px 10px;
+}
+
+/* ── responsive tightening ──────────────────────────────── */
+@media (max-width: 640px) {
+  #root { padding: 0 12px 64px; }
+  .sheet { padding: 16px 14px; margin-top: 16px; }
+  .masthead { padding-top: 18px; gap: 10px; }
+  .pot-row { grid-template-columns: 1fr; }
+  .pot-row .stamp { justify-self: start; }
+  .pot-progress .label { font-size: 0.66rem; }
+  table.ledger { font-size: 0.74rem; }
+  table.ledger th, table.ledger td { padding: 6px 5px; }
+  footer.colophon { flex-direction: column; }
+}
+@media (min-width: 1100px) {
+  #root { max-width: 960px; }
+}

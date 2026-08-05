@@ -6,15 +6,34 @@ import { PotList } from "./components/PotList";
 import { PotDetail } from "./components/PotDetail";
 import { CreatePot } from "./components/CreatePot";
 import { GOALPOT_ADDRESS, chain, explorerUrl } from "./lib/config";
+import { potSlug, resolveSlug } from "./lib/slug";
 
-type Route = { view: "list" } | { view: "create" } | { view: "pot"; id: bigint };
+const GITHUB_URL = "https://github.com/Mayberetard/Goalpot";
+
+type Route =
+  | { view: "list" }
+  | { view: "create" }
+  | { view: "pot"; id: bigint }
+  | { view: "slug"; slug: string };
 
 function parseHash(): Route {
   const h = window.location.hash;
   if (h === "#/new") return { view: "create" };
-  const m = h.match(/^#\/pot\/(\d+)$/);
+  let m = h.match(/^#\/pot\/(\d+)$/); // legacy numeric links keep working
   if (m) return { view: "pot", id: BigInt(m[1]) };
+  m = h.match(/^#\/p\/([0-9a-fA-F]{12})$/);
+  if (m) return { view: "slug", slug: m[1] };
   return { view: "list" };
+}
+
+type Theme = "light" | "dark";
+
+function initialTheme(): Theme {
+  const saved = localStorage.getItem("goalpot-theme");
+  if (saved === "light" || saved === "dark") return saved;
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
 }
 
 /** Detects a configured address that answers basic calls but lacks functions
@@ -35,8 +54,33 @@ function useVersionMismatch(): boolean {
   return base.isSuccess && probe.isError;
 }
 
+/** Resolves an opaque share code to a pot id, then renders the pot. */
+function PotBySlug({ slug, onBack }: { slug: string; onBack: () => void }) {
+  const { data: count, isLoading } = useReadContract({
+    ...goalPot,
+    functionName: "potCount",
+  });
+  if (isLoading || count === undefined)
+    return (
+      <section className="sheet">
+        <p className="empty-note">Reading the chain…</p>
+      </section>
+    );
+  const id = resolveSlug(slug, count as bigint);
+  if (id === null)
+    return (
+      <section className="sheet">
+        <div className="rule-label">No such entry</div>
+        <p>This invite link doesn't match any pot on the current contract.</p>
+        <button className="crumb" onClick={onBack}>← back to the ledger</button>
+      </section>
+    );
+  return <PotDetail potId={id} onBack={onBack} />;
+}
+
 export default function App() {
   const [route, setRoute] = useState<Route>(parseHash);
+  const [theme, setTheme] = useState<Theme>(initialTheme);
   const versionMismatch = useVersionMismatch();
 
   useEffect(() => {
@@ -45,13 +89,23 @@ export default function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("goalpot-theme", theme);
+  }, [theme]);
+
   const go = (hash: string) => {
     window.location.hash = hash;
   };
+  const openPot = (id: bigint) => go(`/p/${potSlug(id)}`);
 
   return (
     <>
-      <Header onHome={() => go("/")} />
+      <Header
+        onHome={() => go("/")}
+        theme={theme}
+        onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+      />
       {versionMismatch && (
         <div className="sheet">
           <div className="rule-label">Configuration problem</div>
@@ -75,15 +129,23 @@ export default function App() {
           </p>
         </div>
       ) : route.view === "create" ? (
-        <CreatePot onDone={(id) => go(id !== undefined ? `/pot/${id}` : "/")} />
+        <CreatePot onDone={(id) => (id !== undefined ? openPot(id) : go("/"))} />
       ) : route.view === "pot" ? (
         <PotDetail potId={route.id} onBack={() => go("/")} />
+      ) : route.view === "slug" ? (
+        <PotBySlug slug={route.slug} onBack={() => go("/")} />
       ) : (
-        <PotList onOpen={(id) => go(`/pot/${id}`)} onCreate={() => go("/new")} />
+        <PotList onOpen={openPot} onCreate={() => go("/new")} />
       )}
       <footer className="colophon">
-        <span>GOALPOT · a coöperative savings ledger on {chain.name}</span>
         <span>
+          © {new Date().getFullYear()} GOALPOT · all rights reserved · a
+          coöperative savings ledger on {chain.name}
+        </span>
+        <span className="colophon-links">
+          <a href={GITHUB_URL} target="_blank" rel="noreferrer">
+            github ↗
+          </a>
           {GOALPOT_ADDRESS && (
             <a
               href={`${explorerUrl}/address/${GOALPOT_ADDRESS}`}
