@@ -456,7 +456,8 @@ function MembersTable({ potId, me }: { potId: bigint; me?: `0x${string}` }) {
       {addrs.length === 0 ? (
         <p className="empty-note">No deposits yet.</p>
       ) : (
-        <table className="ledger mt">
+        <div className="table-wrap mt">
+        <table className="ledger">
           <thead>
             <tr>
               <th>Nº</th>
@@ -481,6 +482,7 @@ function MembersTable({ potId, me }: { potId: bigint; me?: `0x${string}` }) {
             ))}
           </tbody>
         </table>
+        </div>
       )}
       {total > 100n && <p className="hint">Showing first 100 of {String(total)} members.</p>}
     </section>

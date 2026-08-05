@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import { useDisconnect, useWriteContract } from "wagmi";
 import { goalPot, type Pot } from "../lib/hooks";
 import { isStaleConnectorError, STALE_SESSION_MSG } from "../lib/errors";
+import { potSlug } from "../lib/slug";
 
 export function InvitePanel({ potId, pot }: { potId: bigint; pot: Pot }) {
   const { address, isConnected } = useAccount();
@@ -17,7 +18,9 @@ export function InvitePanel({ potId, pot }: { potId: bigint; pot: Pot }) {
   const [ok, setOk] = useState("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const url = `${window.location.origin}${window.location.pathname}#/pot/${potId}`;
+  // Opaque share code — not enumerable like a numeric id. The chain is still
+  // public; the real gate on invite-only pots is the on-chain allowlist.
+  const url = `${window.location.origin}${window.location.pathname}#/p/${potSlug(potId)}`;
   const isCreator = !!address && address.toLowerCase() === pot.creator.toLowerCase();
   const canShare = typeof navigator !== "undefined" && !!navigator.share;
 
