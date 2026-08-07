@@ -30,11 +30,10 @@ export const monadMainnet = defineChain({
 const useMainnet = import.meta.env.VITE_MONAD_NETWORK === "mainnet";
 export const chain = useMainnet ? monadMainnet : monadTestnet;
 
-/** Deployed GoalPot contract. Set via web/.env → VITE_GOALPOT_ADDRESS=0x... */
-export const GOALPOT_ADDRESS = (import.meta.env.VITE_GOALPOT_ADDRESS ?? "") as `0x${string}`;
+/** Deployed GoalPotFactory. Set via web/.env → VITE_FACTORY_ADDRESS=0x... */
+export const FACTORY_ADDRESS = (import.meta.env.VITE_FACTORY_ADDRESS ?? "") as `0x${string}`;
 
-/** WalletConnect project id (free at https://cloud.reown.com). Optional:
- *  without it the app still offers extension + in-wallet-browser connects. */
+/** WalletConnect project id (free at https://cloud.reown.com). Optional. */
 export const WC_PROJECT_ID = import.meta.env.VITE_WC_PROJECT_ID ?? "";
 
 export const wagmiConfig = createConfig({
@@ -65,3 +64,9 @@ export const wagmiConfig = createConfig({
 });
 
 export const explorerUrl = chain.blockExplorers!.default.url;
+
+/** Mainnet, for ENS reverse lookups only — names don't live on Monad. */
+export const ensChain = {
+  id: 1,
+  rpc: import.meta.env.VITE_ENS_RPC_URL ?? "https://ethereum-rpc.publicnode.com",
+};

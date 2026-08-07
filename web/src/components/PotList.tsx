@@ -1,25 +1,26 @@
-import { useReadContracts } from "wagmi";
-import { goalPot, usePotCount, POLL_MS, STATE_LABEL, type Pot } from "../lib/hooks";
+import { useState } from "react";
+import { usePotAddresses, usePotSummaries, STATE_LABEL, POT_TYPE_LABEL } from "../lib/hooks";
 import { fmtMon, timeLeft, pct } from "../lib/format";
+
+const FILTERS = [
+  { id: "all", label: "All" },
+  { id: "0", label: "Standard" },
+  { id: "1", label: "Streak" },
+  { id: "2", label: "Charity" },
+] as const;
 
 export function PotList({
   onOpen,
   onCreate,
 }: {
-  onOpen: (id: bigint) => void;
+  onOpen: (address: string) => void;
   onCreate: () => void;
 }) {
-  const { data: count, isLoading, error } = usePotCount();
-  const n = Number(count ?? 0n);
+  const { addresses, count, isLoading, error } = usePotAddresses();
+  const pots = usePotSummaries(addresses);
+  const [filter, setFilter] = useState<string>("all");
 
-  const { data: potReads } = useReadContracts({
-    contracts: Array.from({ length: n }, (_, i) => ({
-      ...goalPot,
-      functionName: "getPot",
-      args: [BigInt(i)],
-    })),
-    query: { enabled: n > 0, refetchInterval: POLL_MS },
-  });
+  const shown = filter === "all" ? pots : pots.filter((p) => String(p.potType) === filter);
 
   return (
     <section className="sheet">
@@ -30,38 +31,60 @@ export function PotList({
         </button>
       </div>
 
+      {count > 0 && (
+        <div className="row mt filter-row">
+          {FILTERS.map((f) => (
+            <button
+              key={f.id}
+              className={filter === f.id ? "chip active" : "chip"}
+              onClick={() => setFilter(f.id)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {error && (
         <p className="error-note">
-          Could not reach the contract: {error.message.split("\n")[0]}
+          Monad RPC unreachable — check your connection and refresh.
         </p>
       )}
       {isLoading && <p className="empty-note">Reading the chain…</p>}
-      {!isLoading && n === 0 && !error && (
-        <p className="empty-note">
-          The ledger is blank. Be the first to start a savings pot.
-        </p>
+      {!isLoading && count === 0 && !error && (
+        <p className="empty-note">The ledger is blank. Be the first to start a pot.</p>
       )}
 
-      {potReads?.map((r, i) => {
-        if (r.status !== "success") return null;
-        const p = r.result as unknown as Pot;
+      {shown.map((p, i) => {
         const balance = p.totalDeposited + p.penaltyPool;
         return (
-          <div key={i} className="pot-row" onClick={() => onOpen(BigInt(i))}>
+          <div key={p.address} className="pot-row" onClick={() => onOpen(p.address)}>
             <div>
               <h3>
                 Nº {String(i).padStart(3, "0")} — {p.name}
               </h3>
               <div className="meta">
                 {p.memberCount} member{p.memberCount === 1 ? "" : "s"} ·{" "}
-                {fmtMon(balance)} / {fmtMon(p.goal)} MON ({pct(balance, p.goal).toFixed(0)}
-                %) · {p.state === 0 ? timeLeft(BigInt(p.deadline)) : "settled"}
+                {fmtMon(balance)} / {fmtMon(p.goal)} MON ({pct(balance, p.goal).toFixed(0)}%)
+                · {p.state === 0 ? timeLeft(p.deadline) : "settled"}
               </div>
             </div>
-            <span className={`stamp ${STATE_LABEL[p.state]}`}>{STATE_LABEL[p.state]}</span>
+            <div className="row" style={{ gap: 6 }}>
+              {p.potType !== 0 && (
+                <span className={`stamp type-${p.potType}`}>
+                  {POT_TYPE_LABEL[p.potType]}
+                </span>
+              )}
+              <span className={`stamp ${STATE_LABEL[p.state]}`}>
+                {STATE_LABEL[p.state]}
+              </span>
+            </div>
           </div>
         );
       })}
+      {!isLoading && count > 0 && shown.length === 0 && (
+        <p className="empty-note">No {POT_TYPE_LABEL[Number(filter)]} pots yet.</p>
+      )}
     </section>
   );
 }
