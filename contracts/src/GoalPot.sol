@@ -1,23 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @title GoalPot — Group Savings Pots with DAO-gated early exit
-/// @notice Members pool native MON toward a shared goal.
-///         - Goal reached  -> anyone may trigger release to the beneficiary.
-///         - Deadline missed -> pot flips to Refunding; members pull their share back.
-///         - Early exit    -> requires a deposit-weighted majority vote of the other
-///           members; a penalty (in bps, e.g. 5%) stays in the pot for the rest.
-/// @dev Design notes for auditors:
-///      * All balances are tracked internally per pot; `address(this).balance` is
-///        never used for logic, so force-fed value cannot skew goal progress.
-///      * All value leaves via pull-style or single-recipient CEI transfers guarded
-///        by a reentrancy lock.
-///      * No state-changing path iterates over the member list; list reads are
-///        paginated view functions for the UI only.
-///      * Votes are weighted by deposit to resist sybil dust-deposit vote packing.
-contract GoalPot {
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+
+interface IGoalPotFactory {
+    function feeInfo() external view returns (address treasury, uint16 feeBps);
+}
+
+/// @title GoalPot — one savings pot per clone (implementation base)
+/// @notice Shared machinery for every pot type: deposits & membership,
+///         invite allowlists, the DAO-gated early exit (with quorum, abstain
+///         and one-level delegation), release with protocol fee, and
+///         pull-payment refunds/claims.
+/// @dev Deployed once per type as an implementation and cloned (EIP-1167) by
+///      GoalPotFactory. Never holds funds as the implementation:
+///      the constructor disables initializers.
+///
+///      Security posture carried over from v1 (single-contract) GoalPot:
+///      internal accounting only, reentrancy mutex + CEI, pull payments
+///      everywhere, no unbounded loops in state-changing paths,
+///      deposit-weighted votes with a minimum-deposit sybil floor.
+abstract contract GoalPot is Initializable {
     // ---------------------------------------------------------------- errors
-    error PotNotFound();
     error NotActive();
     error DeadlinePassed();
     error DeadlineNotPassed();
@@ -39,66 +43,94 @@ contract GoalPot {
     error NotInvited();
     error NotCreator();
     error TooManyInvites();
-    error NotBeneficiary();
+    error BadDelegation();
+    error MessageTooLong();
 
     // ---------------------------------------------------------------- types
     enum PotState {
-        Active,    // accepting deposits, before resolution
-        Released,  // goal met, funds sent to beneficiary
-        Refunding  // deadline missed, members pull refunds
+        Active,
+        Released,
+        Refunding
     }
 
-    struct Pot {
-        string name;            // bounded at creation (<= 64 bytes)
+    enum VoteChoice {
+        No,
+        Yes,
+        Abstain
+    }
+
+    struct InitParams {
+        string name;
         address creator;
-        address beneficiary;    // where funds go on success
-        uint96 goal;            // wei
-        uint40 deadline;        // unix timestamp
-        uint40 votingPeriod;    // seconds an exit vote stays open
-        uint16 penaltyBps;      // early-exit penalty, e.g. 500 = 5%
-        uint96 minDeposit;      // sybil floor for membership/vote weight
-        bool openJoin;          // false = invite-only (creator-managed allowlist)
-        PotState state;
-        uint96 totalDeposited;  // sum of active members' deposits
-        uint96 penaltyPool;     // penalties retained for remaining members
-        uint32 memberCount;     // members with a non-zero deposit
-        // refund snapshot, fixed when state flips to Refunding
-        uint96 refundTotal;
-        uint96 refundPenalty;
+        address beneficiary;
+        uint96 goal;
+        uint40 deadline;
+        uint16 penaltyBps;
+        uint96 minDeposit;
+        uint40 votingPeriod;
+        bool openJoin;
     }
 
     struct ExitRequest {
         address requester;
-        uint40 deadline;        // vote close time
+        uint40 deadline;
         uint96 yesWeight;
         uint96 noWeight;
-        uint96 eligibleWeight;  // totalDeposited - requester deposit, at request time
+        uint96 abstainWeight;
+        uint96 eligibleWeight; // totalDeposited - requester deposit, at request time
         bool open;
     }
 
-    // ---------------------------------------------------------------- storage
-    uint256 public potCount;
-    mapping(uint256 => Pot) internal pots;
-    mapping(uint256 => mapping(address => uint96)) public depositOf;
-    mapping(uint256 => address[]) internal memberList; // append-only, for UI reads
-    mapping(uint256 => mapping(address => bool)) internal everMember;
-    mapping(uint256 => mapping(address => bool)) public invitedOf; // invite-only pots
-    mapping(uint256 => uint256) public payoutOf; // released, unclaimed beneficiary funds
-
-    mapping(uint256 => ExitRequest) public exitRequestOf; // one live request per pot
-    mapping(uint256 => uint256) public exitRound;         // bumps per request
-    mapping(uint256 => mapping(uint256 => mapping(address => bool))) public hasVoted;
-
-    uint256 private _lock = 1;
-
-    uint256 public constant MAX_PENALTY_BPS = 2_000;   // 20% ceiling
+    // ---------------------------------------------------------------- config
+    uint256 public constant MAX_PENALTY_BPS = 2_000; // 20%
     uint256 public constant MAX_NAME_BYTES = 64;
     uint256 public constant MIN_VOTING_PERIOD = 5 minutes;
     uint256 public constant MAX_VOTING_PERIOD = 30 days;
+    uint256 public constant QUORUM_BPS = 2_500; // 25% of eligible weight
+    uint256 public constant MAX_UPDATE_BYTES = 280;
+
+    // ---------------------------------------------------------------- storage
+    address public factory;
+    string public name;
+    address public creator;
+    address public beneficiary;
+    uint96 public goal;
+    uint40 public deadline;
+    uint40 public votingPeriod;
+    uint16 public penaltyBps;
+    uint96 public minDeposit;
+    bool public openJoin;
+    PotState public state;
+
+    uint96 public totalDeposited; // sum of active members' deposits
+    uint96 public penaltyPool;    // early-exit penalties retained for the group
+    uint32 public memberCount;
+
+    // refund snapshot, fixed when state flips to Refunding
+    uint96 public refundTotal;
+    uint96 public refundPenalty;
+
+    mapping(address => uint96) public depositOf;
+    address[] internal memberList; // append-only, for UI reads
+    mapping(address => bool) internal everMember;
+    mapping(address => bool) public invitedOf;
+
+    /// released/failed-transfer funds waiting to be pulled (beneficiary, treasury)
+    mapping(address => uint256) public claimable;
+
+    // exit vote
+    ExitRequest public exitRequest;
+    uint256 public exitRound;
+    mapping(uint256 => mapping(address => bool)) public hasVoted;
+
+    // one-level vote delegation
+    mapping(address => address) public delegateOf;   // member -> delegatee (0 = none)
+    mapping(address => uint96) public delegatedIn;   // delegatee -> received weight
+
+    uint256 private _lock;
 
     // ---------------------------------------------------------------- events
-    event PotCreated(
-        uint256 indexed potId,
+    event Initialized_(
         address indexed creator,
         address indexed beneficiary,
         string name,
@@ -109,313 +141,366 @@ contract GoalPot {
         uint256 votingPeriod,
         bool openJoin
     );
-    event Deposited(uint256 indexed potId, address indexed member, uint256 amount, uint256 newTotal);
-    event Released(uint256 indexed potId, address indexed beneficiary, uint256 amount);
-    event RefundingStarted(uint256 indexed potId, uint256 totalDeposited, uint256 penaltyPool);
-    event Refunded(uint256 indexed potId, address indexed member, uint256 amount);
-    event ExitRequested(uint256 indexed potId, uint256 indexed round, address indexed requester, uint256 voteDeadline);
-    event ExitVoted(uint256 indexed potId, uint256 indexed round, address indexed voter, bool support, uint256 weight);
-    event ExitExecuted(uint256 indexed potId, uint256 indexed round, address indexed requester, uint256 payout, uint256 penalty);
-    event ExitClosed(uint256 indexed potId, uint256 indexed round, bool passed);
-    event MembersInvited(uint256 indexed potId, address[] invitees);
-    event PayoutClaimed(uint256 indexed potId, address indexed beneficiary, uint256 amount);
+    event Deposited(address indexed member, uint256 amount, uint256 newTotal);
+    event Released(address indexed beneficiary, uint256 net, uint256 fee);
+    event PayoutClaimed(address indexed recipient, uint256 amount);
+    event RefundingStarted(uint256 totalDeposited, uint256 penaltyPool);
+    event Refunded(address indexed member, uint256 amount);
+    event ExitRequested(uint256 indexed round, address indexed requester, uint256 voteDeadline);
+    event ExitVoted(uint256 indexed round, address indexed voter, VoteChoice choice, uint256 weight);
+    event ExitExecuted(uint256 indexed round, address indexed requester, uint256 payout, uint256 penalty);
+    event ExitClosed(uint256 indexed round, bool passed);
+    event MembersInvited(address[] invitees);
+    event DelegateSet(address indexed member, address indexed delegatee);
+    event PotUpdatePosted(address indexed author, string message, uint256 timestamp);
+
+    constructor() {
+        _disableInitializers();
+    }
 
     // ---------------------------------------------------------------- modifiers
     modifier nonReentrant() {
-        if (_lock != 1) revert Reentrancy();
+        if (_lock == 2) revert Reentrancy();
         _lock = 2;
         _;
         _lock = 1;
     }
 
-    modifier exists(uint256 potId) {
-        if (potId >= potCount) revert PotNotFound();
-        _;
-    }
-
-    // ---------------------------------------------------------------- create
-    /// @param openJoin true = anyone may deposit; false = invite-only, seeded
-    ///        with `invitees` (creator is always allowed) and extendable later
-    ///        via {inviteMembers}.
-    function createPot(
-        string calldata name,
-        address beneficiary,
-        uint96 goal,
-        uint40 deadline,
-        uint16 penaltyBps,
-        uint96 minDeposit,
-        uint40 votingPeriod,
-        bool openJoin,
-        address[] calldata invitees
-    ) external returns (uint256 potId) {
+    // ---------------------------------------------------------------- init
+    function __base_init(InitParams calldata p, address[] calldata invitees) internal onlyInitializing {
         if (
-            bytes(name).length == 0 ||
-            bytes(name).length > MAX_NAME_BYTES ||
-            beneficiary == address(0) ||
-            goal == 0 ||
-            deadline <= block.timestamp ||
-            penaltyBps > MAX_PENALTY_BPS ||
-            votingPeriod < MIN_VOTING_PERIOD ||
-            votingPeriod > MAX_VOTING_PERIOD
+            bytes(p.name).length == 0 ||
+            bytes(p.name).length > MAX_NAME_BYTES ||
+            p.creator == address(0) ||
+            p.beneficiary == address(0) ||
+            p.goal == 0 ||
+            p.deadline <= block.timestamp ||
+            p.penaltyBps > MAX_PENALTY_BPS ||
+            p.votingPeriod < MIN_VOTING_PERIOD ||
+            p.votingPeriod > MAX_VOTING_PERIOD
         ) revert BadParams();
 
-        potId = potCount++;
-        Pot storage p = pots[potId];
-        p.name = name;
-        p.creator = msg.sender;
-        p.beneficiary = beneficiary;
-        p.goal = goal;
-        p.deadline = deadline;
-        p.penaltyBps = penaltyBps;
-        p.minDeposit = minDeposit;
-        p.votingPeriod = votingPeriod;
-        p.openJoin = openJoin;
-        p.state = PotState.Active;
+        factory = msg.sender;
+        name = p.name;
+        creator = p.creator;
+        beneficiary = p.beneficiary;
+        goal = p.goal;
+        deadline = p.deadline;
+        penaltyBps = p.penaltyBps;
+        minDeposit = p.minDeposit;
+        votingPeriod = p.votingPeriod;
+        openJoin = p.openJoin;
+        state = PotState.Active;
+        _lock = 1;
 
-        if (!openJoin) {
-            invitedOf[potId][msg.sender] = true;
-            _invite(potId, invitees);
+        if (!p.openJoin) {
+            invitedOf[p.creator] = true;
+            _invite(invitees);
         }
 
-        emit PotCreated(
-            potId,
-            msg.sender,
-            p.beneficiary,
-            p.name,
-            p.goal,
-            p.deadline,
-            p.penaltyBps,
-            p.minDeposit,
-            p.votingPeriod,
-            p.openJoin
+        emit Initialized_(
+            p.creator, p.beneficiary, p.name, p.goal, p.deadline, p.penaltyBps, p.minDeposit, p.votingPeriod, p.openJoin
         );
     }
 
-    /// @notice Creator extends an invite-only pot's allowlist while it is Active.
-    function inviteMembers(uint256 potId, address[] calldata invitees) external exists(potId) {
-        Pot storage p = pots[potId];
-        if (msg.sender != p.creator) revert NotCreator();
-        if (p.state != PotState.Active) revert NotActive();
-        if (p.openJoin) revert BadParams();
-        _invite(potId, invitees);
+    // ---------------------------------------------------------------- invites
+    function inviteMembers(address[] calldata invitees) external {
+        if (msg.sender != creator) revert NotCreator();
+        if (state != PotState.Active) revert NotActive();
+        if (openJoin) revert BadParams();
+        _invite(invitees);
     }
 
-    function _invite(uint256 potId, address[] calldata invitees) internal {
+    function _invite(address[] calldata invitees) internal {
         if (invitees.length > 100) revert TooManyInvites(); // bound the loop
         for (uint256 i = 0; i < invitees.length; i++) {
             if (invitees[i] == address(0)) revert BadParams();
-            invitedOf[potId][invitees[i]] = true;
+            invitedOf[invitees[i]] = true;
         }
-        if (invitees.length > 0) emit MembersInvited(potId, invitees);
+        if (invitees.length > 0) emit MembersInvited(invitees);
     }
 
     // ---------------------------------------------------------------- deposit
-    function deposit(uint256 potId) external payable exists(potId) {
-        Pot storage p = pots[potId];
-        if (p.state != PotState.Active) revert NotActive();
-        if (block.timestamp >= p.deadline) revert DeadlinePassed();
+    function deposit() public payable virtual {
+        if (state != PotState.Active) revert NotActive();
+        if (block.timestamp >= deadline) revert DeadlinePassed();
         if (msg.value == 0) revert ZeroAmount();
         if (msg.value > type(uint96).max) revert BadParams();
 
-        uint96 prev = depositOf[potId][msg.sender];
+        uint96 prev = depositOf[msg.sender];
         if (prev == 0) {
-            if (!p.openJoin && !invitedOf[potId][msg.sender]) revert NotInvited();
-            if (msg.value < p.minDeposit) revert BelowMinDeposit();
-            p.memberCount += 1;
-            if (!everMember[potId][msg.sender]) {
-                everMember[potId][msg.sender] = true;
-                memberList[potId].push(msg.sender);
+            if (!openJoin && !invitedOf[msg.sender]) revert NotInvited();
+            if (msg.value < minDeposit) revert BelowMinDeposit();
+            memberCount += 1;
+            if (!everMember[msg.sender]) {
+                everMember[msg.sender] = true;
+                memberList.push(msg.sender);
             }
         }
-        depositOf[potId][msg.sender] = prev + uint96(msg.value);
-        p.totalDeposited += uint96(msg.value);
 
-        emit Deposited(potId, msg.sender, msg.value, p.totalDeposited);
+        _onDeposit(msg.sender, prev); // pot-type hook (e.g. streak accounting)
+
+        depositOf[msg.sender] = depositOf[msg.sender] + uint96(msg.value);
+        totalDeposited += uint96(msg.value);
+
+        address d = delegateOf[msg.sender];
+        if (d != address(0)) delegatedIn[d] += uint96(msg.value);
+
+        emit Deposited(msg.sender, msg.value, totalDeposited);
     }
+
+    /// @dev Hook before the deposit is credited; `prev` is the balance before.
+    function _onDeposit(address member, uint96 prev) internal virtual {}
 
     // ---------------------------------------------------------------- release
-    /// @notice Goal reached -> anyone can settle the pot. Funds are credited to
-    ///         the beneficiary (pull payment) rather than pushed, so a
-    ///         beneficiary that cannot receive value can never freeze the pot.
-    function release(uint256 potId) external exists(potId) {
-        Pot storage p = pots[potId];
-        if (p.state != PotState.Active) revert NotActive();
-        uint256 balance = uint256(p.totalDeposited) + p.penaltyPool;
-        if (balance < p.goal) revert GoalNotReached();
-
-        p.state = PotState.Released;
-        p.totalDeposited = 0;
-        p.penaltyPool = 0;
-        payoutOf[potId] = balance;
-
-        emit Released(potId, p.beneficiary, balance);
+    /// @notice Goal reached -> anyone can settle the pot. The beneficiary's
+    ///         payout (minus the protocol fee) becomes pull-claimable.
+    function release() external virtual {
+        _release();
     }
 
-    /// @notice Beneficiary pulls the released pot.
-    function claimPayout(uint256 potId) external exists(potId) nonReentrant {
-        Pot storage p = pots[potId];
-        if (msg.sender != p.beneficiary) revert NotBeneficiary();
-        uint256 amount = payoutOf[potId];
-        if (amount == 0) revert NothingToClaim();
-        payoutOf[potId] = 0;
+    function _release() internal {
+        if (state != PotState.Active) revert NotActive();
+        uint256 balance = uint256(totalDeposited) + penaltyPool;
+        if (balance < goal) revert GoalNotReached();
 
+        state = PotState.Released;
+        totalDeposited = 0;
+        penaltyPool = 0;
+
+        uint256 fee;
+        (address treasury, uint16 feeBps) = IGoalPotFactory(factory).feeInfo();
+        if (feeBps > 0 && treasury != address(0)) {
+            fee = (balance * feeBps) / 10_000;
+            claimable[treasury] += fee;
+        }
+        claimable[beneficiary] += balance - fee;
+
+        _onRelease(); // pot-type hook (e.g. snapshot streak rewards)
+        emit Released(beneficiary, balance - fee, fee);
+    }
+
+    function _onRelease() internal virtual {}
+
+    /// @notice Pull whatever this address is owed (beneficiary payout,
+    ///         protocol fee, streak rewards credited by subtypes, ...).
+    function claim() external nonReentrant {
+        uint256 amount = claimable[msg.sender];
+        if (amount == 0) revert NothingToClaim();
+        claimable[msg.sender] = 0;
         (bool ok, ) = msg.sender.call{value: amount}("");
         if (!ok) revert TransferFailed();
-        emit PayoutClaimed(potId, msg.sender, amount);
+        emit PayoutClaimed(msg.sender, amount);
     }
 
     // ---------------------------------------------------------------- refunds
-    /// @notice Deadline missed with goal unmet -> flip to Refunding and snapshot
-    ///         totals so each member's share is order-independent.
-    function startRefunds(uint256 potId) public exists(potId) {
-        Pot storage p = pots[potId];
-        if (p.state != PotState.Active) revert NotActive();
-        if (block.timestamp < p.deadline) revert DeadlineNotPassed();
-        if (uint256(p.totalDeposited) + p.penaltyPool >= p.goal) revert GoalAlreadyReached();
+    function startRefunds() public {
+        if (state != PotState.Active) revert NotActive();
+        if (block.timestamp < deadline) revert DeadlineNotPassed();
+        if (uint256(totalDeposited) + penaltyPool >= goal) revert GoalAlreadyReached();
 
-        p.state = PotState.Refunding;
-        p.refundTotal = p.totalDeposited;
-        p.refundPenalty = p.penaltyPool;
-        emit RefundingStarted(potId, p.totalDeposited, p.penaltyPool);
+        state = PotState.Refunding;
+        refundTotal = totalDeposited;
+        refundPenalty = penaltyPool;
+        _onRefundingStarted();
+        emit RefundingStarted(totalDeposited, penaltyPool);
     }
 
-    /// @notice Pull your deposit back, plus a pro-rata slice of retained penalties.
-    function claimRefund(uint256 potId) external exists(potId) nonReentrant {
-        Pot storage p = pots[potId];
-        if (p.state == PotState.Active) {
-            startRefunds(potId); // permissionless flip if conditions hold
-        }
-        if (p.state != PotState.Refunding) revert NotActive();
+    function _onRefundingStarted() internal virtual {}
 
-        uint96 d = depositOf[potId][msg.sender];
+    /// @notice Pull your deposit back plus a pro-rata slice of retained
+    ///         penalties (subtypes may add more, e.g. streak rewards).
+    function claimRefund() external nonReentrant {
+        if (state == PotState.Active) startRefunds(); // permissionless flip
+        if (state != PotState.Refunding) revert NotActive();
+
+        uint96 d = depositOf[msg.sender];
         if (d == 0) revert NothingToClaim();
-        depositOf[potId][msg.sender] = 0;
-        p.memberCount -= 1;
+        depositOf[msg.sender] = 0;
+        memberCount -= 1;
+        _clearDelegation(msg.sender, d);
 
-        uint256 bonus = p.refundTotal == 0 ? 0 : (uint256(p.refundPenalty) * d) / p.refundTotal;
-        uint256 amount = uint256(d) + bonus;
+        uint256 bonus = refundTotal == 0 ? 0 : (uint256(refundPenalty) * d) / refundTotal;
+        uint256 amount = uint256(d) + bonus + _extraRefund(msg.sender, d);
 
         (bool ok, ) = msg.sender.call{value: amount}("");
         if (!ok) revert TransferFailed();
-        emit Refunded(potId, msg.sender, amount);
+        emit Refunded(msg.sender, amount);
     }
 
-    // ---------------------------------------------------------------- early exit (DAO vote)
-    /// @notice Ask the other members for permission to leave early.
-    function requestExit(uint256 potId) external exists(potId) {
-        Pot storage p = pots[potId];
-        if (p.state != PotState.Active) revert NotActive();
-        if (block.timestamp >= p.deadline) revert DeadlinePassed();
-        uint96 d = depositOf[potId][msg.sender];
+    /// @dev Subtype hook: extra wei owed to `member` on refund (e.g. streak
+    ///      reward share). Called after their deposit is zeroed.
+    function _extraRefund(address member, uint96 depositBefore) internal virtual returns (uint256) {
+        return 0;
+    }
+
+    // ---------------------------------------------------------------- delegation
+    /// @notice Delegate your vote weight to another member (one level only:
+    ///         your delegatee must not have delegated, and you cannot delegate
+    ///         while others delegate to you). Zero address clears.
+    function setDelegate(address to) external {
+        if (state != PotState.Active) revert NotActive();
+        uint96 d = depositOf[msg.sender];
         if (d == 0) revert NotMember();
 
-        ExitRequest storage r = exitRequestOf[potId];
+        address prev = delegateOf[msg.sender];
+        if (prev != address(0)) delegatedIn[prev] -= d;
+
+        if (to != address(0)) {
+            if (
+                to == msg.sender ||
+                depositOf[to] == 0 ||
+                delegateOf[to] != address(0) || // no chains forward
+                delegatedIn[msg.sender] != 0    // no chains backward
+            ) revert BadDelegation();
+            delegatedIn[to] += d;
+        }
+        delegateOf[msg.sender] = to;
+        emit DelegateSet(msg.sender, to);
+    }
+
+    function _clearDelegation(address member, uint96 weight) internal {
+        address d = delegateOf[member];
+        if (d != address(0)) {
+            delegatedIn[d] -= weight;
+            delegateOf[member] = address(0);
+        }
+    }
+
+    /// @notice The weight `voter` would vote with right now.
+    function voteWeightOf(address voter) public view returns (uint256 w) {
+        if (delegateOf[voter] == address(0)) w = depositOf[voter];
+        w += delegatedIn[voter];
+    }
+
+    // ---------------------------------------------------------------- early exit
+    function requestExit() external {
+        if (state != PotState.Active) revert NotActive();
+        if (block.timestamp >= deadline) revert DeadlinePassed();
+        uint96 d = depositOf[msg.sender];
+        if (d == 0) revert NotMember();
+
+        ExitRequest storage r = exitRequest;
         if (r.open) {
-            // A stale, expired, failed request can be displaced.
             if (block.timestamp <= r.deadline) revert ExitAlreadyPending();
-            emit ExitClosed(potId, exitRound[potId], false);
+            emit ExitClosed(exitRound, false); // expired without passing
         }
 
-        uint256 round = ++exitRound[potId];
-        uint40 voteDeadline = uint40(block.timestamp) + p.votingPeriod;
-        if (voteDeadline > p.deadline) voteDeadline = p.deadline;
+        uint256 round = ++exitRound;
+        uint40 voteDeadline = uint40(block.timestamp) + votingPeriod;
+        if (voteDeadline > deadline) voteDeadline = deadline;
 
-        exitRequestOf[potId] = ExitRequest({
+        exitRequest = ExitRequest({
             requester: msg.sender,
             deadline: voteDeadline,
             yesWeight: 0,
             noWeight: 0,
-            eligibleWeight: p.totalDeposited - d,
+            abstainWeight: 0,
+            eligibleWeight: totalDeposited - d,
             open: true
         });
-        emit ExitRequested(potId, round, msg.sender, voteDeadline);
+        emit ExitRequested(round, msg.sender, voteDeadline);
     }
 
-    /// @notice Vote on the pot's live exit request. Weight = your current deposit.
-    function voteOnExit(uint256 potId, bool support) external exists(potId) {
-        Pot storage p = pots[potId];
-        if (p.state != PotState.Active) revert NotActive();
-        ExitRequest storage r = exitRequestOf[potId];
+    function voteOnExit(VoteChoice choice) external {
+        if (state != PotState.Active) revert NotActive();
+        ExitRequest storage r = exitRequest;
         if (!r.open) revert NoPendingExit();
         if (block.timestamp > r.deadline) revert VoteClosed();
         if (msg.sender == r.requester) revert SelfVote();
 
-        uint96 w = depositOf[potId][msg.sender];
+        uint256 w = voteWeightOf(msg.sender);
+        // never let the requester's own stake vote, even via delegation
+        if (delegateOf[r.requester] == msg.sender) w -= depositOf[r.requester];
         if (w == 0) revert NotMember();
 
-        uint256 round = exitRound[potId];
-        if (hasVoted[potId][round][msg.sender]) revert AlreadyVoted();
-        hasVoted[potId][round][msg.sender] = true;
+        uint256 round = exitRound;
+        if (hasVoted[round][msg.sender]) revert AlreadyVoted();
+        hasVoted[round][msg.sender] = true;
 
-        if (support) r.yesWeight += w;
-        else r.noWeight += w;
-        emit ExitVoted(potId, round, msg.sender, support, w);
+        if (choice == VoteChoice.Yes) r.yesWeight += uint96(w);
+        else if (choice == VoteChoice.No) r.noWeight += uint96(w);
+        else r.abstainWeight += uint96(w);
+        emit ExitVoted(round, msg.sender, choice, w);
     }
 
-    /// @notice Execute a passed exit: requester leaves with (100% - penalty)%,
-    ///         the penalty stays in the pot for the remaining members.
-    function executeExit(uint256 potId) external exists(potId) nonReentrant {
-        Pot storage p = pots[potId];
-        if (p.state != PotState.Active) revert NotActive();
-        ExitRequest storage r = exitRequestOf[potId];
+    /// @notice Execute a passed exit. Passing rules:
+    ///         - sole member (zero eligible weight): passes outright;
+    ///         - before the vote deadline: yes > 50% of eligible weight;
+    ///         - after the vote deadline: quorum (>= 25% of eligible weight
+    ///           voted, any choice) AND yes > no.
+    function executeExit() external nonReentrant {
+        if (state != PotState.Active) revert NotActive();
+        ExitRequest storage r = exitRequest;
         if (!r.open) revert NoPendingExit();
 
-        uint96 d = depositOf[potId][r.requester];
-        // Majority of the weight that was eligible when the request opened.
-        // A sole member has no one to convince: zero eligible weight passes.
-        bool passed = d > 0 &&
-            (r.eligibleWeight == 0 || uint256(r.yesWeight) * 2 > r.eligibleWeight);
+        uint96 d = depositOf[r.requester];
+        bool passed;
+        if (d > 0) {
+            if (r.eligibleWeight == 0) {
+                passed = true; // no one to object
+            } else if (uint256(r.yesWeight) * 2 > r.eligibleWeight) {
+                passed = true; // absolute majority, executable early
+            } else if (block.timestamp > r.deadline) {
+                uint256 voted = uint256(r.yesWeight) + r.noWeight + r.abstainWeight;
+                passed = voted * 10_000 >= uint256(r.eligibleWeight) * QUORUM_BPS && r.yesWeight > r.noWeight;
+            }
+        }
         if (!passed) revert VoteNotPassed();
 
-        uint256 round = exitRound[potId];
+        uint256 round = exitRound;
         address requester = r.requester;
         r.open = false;
 
-        uint256 penalty = (uint256(d) * p.penaltyBps) / 10_000;
+        uint256 penalty = (uint256(d) * penaltyBps) / 10_000;
         uint256 payout = uint256(d) - penalty;
 
-        depositOf[potId][requester] = 0;
-        p.memberCount -= 1;
-        p.totalDeposited -= d;
-        p.penaltyPool += uint96(penalty);
+        depositOf[requester] = 0;
+        memberCount -= 1;
+        totalDeposited -= d;
+        penaltyPool += uint96(penalty);
+        _clearDelegation(requester, d);
 
         (bool ok, ) = requester.call{value: payout}("");
         if (!ok) revert TransferFailed();
-        emit ExitExecuted(potId, round, requester, payout, penalty);
-        emit ExitClosed(potId, round, true);
+        emit ExitExecuted(round, requester, payout, penalty);
+        emit ExitClosed(round, true);
+    }
+
+    // ---------------------------------------------------------------- updates board
+    /// @notice Members and the creator can post short updates; stored as
+    ///         events only (the chain is the message board).
+    function postUpdate(string calldata message) external {
+        if (msg.sender != creator && depositOf[msg.sender] == 0) revert NotMember();
+        if (bytes(message).length == 0 || bytes(message).length > MAX_UPDATE_BYTES) revert MessageTooLong();
+        emit PotUpdatePosted(msg.sender, message, block.timestamp);
     }
 
     // ---------------------------------------------------------------- views
-    function getPot(uint256 potId) external view exists(potId) returns (Pot memory) {
-        return pots[potId];
+    function potType() external pure virtual returns (uint8);
+
+    function potBalance() external view returns (uint256) {
+        return uint256(totalDeposited) + penaltyPool;
     }
 
-    /// @notice Paginated member list with live deposits (zero = exited/refunded).
-    function getMembers(uint256 potId, uint256 offset, uint256 limit)
+    function getMembers(uint256 offset, uint256 limit)
         external
         view
-        exists(potId)
         returns (address[] memory addrs, uint256[] memory amounts, uint256 total)
     {
-        address[] storage list = memberList[potId];
-        total = list.length;
+        total = memberList.length;
         if (offset >= total) return (new address[](0), new uint256[](0), total);
         uint256 n = total - offset;
         if (n > limit) n = limit;
         addrs = new address[](n);
         amounts = new uint256[](n);
         for (uint256 i = 0; i < n; i++) {
-            address m = list[offset + i];
+            address m = memberList[offset + i];
             addrs[i] = m;
-            amounts[i] = depositOf[potId][m];
+            amounts[i] = depositOf[m];
         }
     }
 
-    function potBalance(uint256 potId) external view exists(potId) returns (uint256) {
-        Pot storage p = pots[potId];
-        return uint256(p.totalDeposited) + p.penaltyPool;
-    }
-
-    /// @dev No receive/fallback: direct transfers to the contract revert, keeping
-    ///      internal accounting equal to real balance minus nothing.
+    /// @dev No receive/fallback: direct transfers revert, keeping internal
+    ///      accounting equal to the real balance.
 }

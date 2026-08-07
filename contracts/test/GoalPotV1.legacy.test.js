@@ -13,7 +13,7 @@ async function warpTo(ts) {
   await network.provider.send("evm_mine");
 }
 
-describe("GoalPot", () => {
+describe("GoalPotV1 (legacy, deployed on testnet)", () => {
   let pot, alice, bob, carol, dave, beneficiary;
 
   const GOAL = ethers.parseEther("10");
@@ -42,7 +42,7 @@ describe("GoalPot", () => {
 
   beforeEach(async () => {
     [alice, bob, carol, dave, beneficiary] = await ethers.getSigners();
-    pot = await (await ethers.getContractFactory("GoalPot")).deploy();
+    pot = await (await ethers.getContractFactory("GoalPotV1")).deploy();
   });
 
   describe("createPot", () => {
@@ -188,7 +188,7 @@ describe("GoalPot", () => {
     it("a beneficiary that cannot receive value cannot freeze the pot", async () => {
       // Deploy a contract with no receive/fallback as the beneficiary: GoalPot
       // itself rejects plain transfers, so it works as the hostile recipient.
-      const hostile = await (await ethers.getContractFactory("GoalPot")).deploy();
+      const hostile = await (await ethers.getContractFactory("GoalPotV1")).deploy();
       const { potId } = await createDefaultPot({
         beneficiary: await hostile.getAddress(),
       });
