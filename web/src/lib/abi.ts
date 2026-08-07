@@ -3530,6 +3530,11 @@ export const charityPotAbi = [
   },
   {
     "inputs": [],
+    "name": "NoEarlyExit",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NoPendingExit",
     "type": "error"
   },
@@ -4718,7 +4723,7 @@ export const charityPotAbi = [
     "inputs": [],
     "name": "requestExit",
     "outputs": [],
-    "stateMutability": "nonpayable",
+    "stateMutability": "pure",
     "type": "function"
   },
   {

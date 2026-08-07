@@ -670,6 +670,15 @@ describe("GoalPotFactory + clones", () => {
       await expect(pot.release()).to.be.revertedWithCustomError(pot, "GoalNotReached");
     });
 
+    it("has no early exit — donations are irrevocable", async () => {
+      const { pot } = await createCharity();
+      await pot.connect(bob).deposit({ value: ethers.parseEther("1") });
+      await expect(pot.connect(bob).requestExit()).to.be.revertedWithCustomError(
+        pot,
+        "NoEarlyExit"
+      );
+    });
+
     it("rejects an empty charity name", async () => {
       await expect(
         factory.createCharityPot(initParams({}, (await now()) + DAY), [], {

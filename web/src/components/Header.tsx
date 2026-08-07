@@ -6,10 +6,12 @@ import { WalletModal } from "./WalletModal";
 
 export function Header({
   onHome,
+  onLeaderboard,
   theme,
   onToggleTheme,
 }: {
   onHome: () => void;
+  onLeaderboard: () => void;
   theme: "light" | "dark";
   onToggleTheme: () => void;
 }) {
@@ -27,6 +29,9 @@ export function Header({
         <div className="tagline">coöperative savings · dao release</div>
       </div>
       <div className="row">
+        <button className="ghost" onClick={onLeaderboard} title="Leaderboard">
+          ⛃ Ranks
+        </button>
         <button
           className="ghost theme-toggle"
           onClick={onToggleTheme}

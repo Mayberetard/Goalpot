@@ -411,6 +411,138 @@ input:focus, select:focus, textarea:focus {
   font-style: italic;
 }
 
+/* ── chips, templates, type pickers ─────────────────────── */
+.chip {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-soft);
+}
+.chip:hover:not(:disabled) { transform: none; box-shadow: none; border-color: var(--ink); }
+.chip.active {
+  border-color: var(--oxblood);
+  color: var(--oxblood);
+  background: var(--rule-tint);
+}
+.filter-row, .type-row { gap: 8px; }
+
+.template-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.template-card {
+  display: block;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: none;
+  font-family: var(--serif);
+}
+.template-card:hover { border-color: var(--oxblood); transform: none; box-shadow: 2px 2px 0 var(--line); }
+.template-card b { display: block; font-size: 0.98rem; }
+.template-card small {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+/* type stamps */
+.stamp.type-1 { color: var(--brass); }
+.stamp.type-2 { color: var(--fir-bright); }
+
+/* ── streak calendar ────────────────────────────────────── */
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 6px;
+}
+.cal-cell {
+  position: relative;
+  aspect-ratio: 1;
+  border: 1.5px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+}
+.cal-cell .cal-idx {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 0.55rem;
+  color: var(--ink-soft);
+}
+.cal-cell .cal-mark { font-size: 1.05rem; font-weight: 700; }
+.cal-cell.met { border-color: var(--fir); color: var(--fir); background: rgba(62, 114, 87, 0.1); }
+.cal-cell.missed { border-color: var(--stamp-red); color: var(--stamp-red); background: rgba(176, 58, 42, 0.09); }
+.cal-cell.due { border-color: var(--brass); color: var(--brass); border-style: dashed; }
+.streak-count { font-size: 1.05rem; }
+
+/* ── donor wall ─────────────────────────────────────────── */
+.donor-wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.donor-note {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--fir);
+  border-radius: 6px;
+  background: var(--paper);
+}
+.donor-note blockquote {
+  margin: 0;
+  font-size: 0.95rem;
+  font-style: italic;
+}
+.donor-note figcaption {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+}
+
+/* ── updates board ──────────────────────────────────────── */
+.updates { display: flex; flex-direction: column; gap: 10px; }
+.update {
+  padding: 10px 14px;
+  border-left: 3px solid var(--line);
+  background: var(--paper);
+  border-radius: 0 6px 6px 0;
+}
+.update-meta {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin-bottom: 3px;
+}
+.update p { font-size: 0.95rem; }
+
+.vote-bar .abstain { background: var(--brass); }
+
+.delegate-box {
+  border-top: 1px dashed var(--line);
+  padding-top: 14px;
+}
+
 /* ── wallet picker sheet ────────────────────────────────── */
 .modal-overlay {
   position: fixed;

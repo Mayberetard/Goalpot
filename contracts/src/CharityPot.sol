@@ -10,6 +10,7 @@ import {GoalPot} from "./GoalPot.sol";
 ///         donor wall.
 contract CharityPot is GoalPot {
     error BadCharityParams();
+    error NoEarlyExit();
 
     uint256 public constant MAX_DONOR_MESSAGE_BYTES = 140;
 
@@ -70,5 +71,12 @@ contract CharityPot is GoalPot {
         uint256 amount = uint256(totalDeposited) + penaltyPool;
         _release();
         emit CharityReleased(address(this), amount, charityName);
+    }
+
+    /// @notice Donations are irrevocable: there is no early exit from an
+    ///         appeal. The only outcomes are the goal being met (funds go to
+    ///         the charity) or missed (every donor is refunded).
+    function requestExit() external pure override {
+        revert NoEarlyExit();
     }
 }

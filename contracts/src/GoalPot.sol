@@ -374,7 +374,7 @@ abstract contract GoalPot is Initializable {
     }
 
     // ---------------------------------------------------------------- early exit
-    function requestExit() external {
+    function requestExit() external virtual {
         if (state != PotState.Active) revert NotActive();
         if (block.timestamp >= deadline) revert DeadlinePassed();
         uint96 d = depositOf[msg.sender];
